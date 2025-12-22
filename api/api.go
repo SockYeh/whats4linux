@@ -10,6 +10,23 @@ import (
 	"go.mau.fi/whatsmeow"
 )
 
+type Group struct {
+	JID              string `json:"jid"`
+	Name             string `json:"name"`
+	Topic            string `json:"topic"`
+	OwnerJID         string `json:"owner_jid"`
+	ParticipantCount int    `json:"participant_count"`
+}
+
+type Contact struct {
+	JID        string `json:"jid"`
+	Name       string `json:"name"`
+	Short      string `json:"short"`
+	FullName   string `json:"full_name"`
+	PushName   string `json:"push_name"`
+	IsBusiness bool   `json:"is_business"`
+}
+
 // Api struct
 type Api struct {
 	ctx      context.Context
@@ -55,11 +72,42 @@ func (a *Api) Login() error {
 	return nil
 }
 
-// Contact struct to format user info
-type Contact struct {
-	JID      string `json:"jid"`
-	FullName string `json:"full_name,omitempty"`
-	PushName string `json:"push_name"`
+func (a *Api) FetchGroups() ([]Group, error) {
+	groups, err := a.waClient.GetJoinedGroups(a.ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []Group
+	for _, g := range groups {
+		result = append(result, Group{
+			JID:              g.JID.String(),
+			Name:             g.Name,
+			Topic:            g.Topic,
+			OwnerJID:         g.OwnerJID.String(),
+			ParticipantCount: len(g.Participants),
+		})
+	}
+	return result, nil
+}
+
+func (a *Api) FetchContacts() ([]Contact, error) {
+	contacts, err := a.waClient.Store.Contacts.GetAllContacts(a.ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []Contact
+	for jid, info := range contacts {
+		result = append(result, Contact{
+			JID:        jid.String(),
+			Name:       info.FullName,
+			Short:      info.FirstName,
+			PushName:   info.PushName,
+			IsBusiness: info.BusinessName != "",
+		})
+	}
+	return result, nil
 }
 
 func (a *Api) Contacts() ([]Contact, error) {

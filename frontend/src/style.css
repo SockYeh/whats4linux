@@ -1,11 +1,30 @@
-body {
-    background: #f0f2f5;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont;
-  }
-  
-h1 {
-    color: #1b2636;
+@import "tailwindcss";
+
+@theme {
+  --color-dark-bg: #000000;
+  --color-dark-secondary: #0d0d0d;
+  --color-dark-tertiary: #1a1a1a;
+  --color-dark-text: #ffffff;
+  --color-dark-muted: #b5bac1;
+  --color-light-bg: #ffffff;
+  --color-light-text: #000000;
+  --color-light-primary: #00a884;
+  --color-light-secondary: #f0f2f5;
 }
+
+@variant dark (&:where(.dark, .dark *));
+
+body {
+    background-color: #f0f2f5;
+    color: #000000;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont;
+}
+
+.dark body {
+    background-color: #000000;
+    color: #ffffff;
+}
+
   .wa-root {
     height: 100vh;
     display: flex;
@@ -83,4 +102,5 @@ h1 {
     font-size: 13px;
     color: #25d366;
   }
+  
   
