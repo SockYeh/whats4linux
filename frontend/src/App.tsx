@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Login } from "../wailsjs/go/api/Api";
+import { Login, GetCustomCSS, GetCustomJS } from "../wailsjs/go/api/Api";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import QRCode from "qrcode";
 import { ChatListScreen } from "./screens/ChatScreen";
@@ -35,6 +35,24 @@ function App() {
 
   useEffect(() => {
     Login();
+
+    GetCustomCSS().then(css => {
+      if (css) {
+        const style = document.createElement('style');
+        style.id = 'custom-css';
+        style.innerHTML = css;
+        document.head.appendChild(style);
+      }
+    });
+
+    GetCustomJS().then(js => {
+      if (js) {
+        const script = document.createElement('script');
+        script.id = 'custom-js';
+        script.innerHTML = js;
+        document.body.appendChild(script);
+      }
+    });
   }, []);
 
   useEffect(() => {

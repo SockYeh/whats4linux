@@ -556,3 +556,23 @@ func (a *Api) mainEventHandler(evt interface{}) {
 	}
 
 }
+
+func (a *Api) GetCustomCSS() string {
+	return settings.GetCustomCSS()
+}
+
+func (a *Api) SetCustomCSS(css string) error {
+	return settings.SetCustomCSS(css)
+}
+
+func (a *Api) GetCustomJS() string {
+	return settings.GetCustomJS()
+}
+
+func (a *Api) SetCustomJS(js string) error {
+	return settings.SetCustomJS(js)
+}
+
+func (a *Api) Reinitialize() error {
+	return a.cw.Initialise(a.ctx, a.waClient)
+}

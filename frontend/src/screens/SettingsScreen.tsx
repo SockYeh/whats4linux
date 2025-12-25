@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { GetProfile } from "../../wailsjs/go/api/Api";
+import { GetProfile, GetCustomCSS, SetCustomCSS, GetCustomJS, SetCustomJS, Reinitialize } from "../../wailsjs/go/api/Api";
 import { api } from "../../wailsjs/go/models";
 
-type SettingsCategory = "account" | "privacy" | "chats" | "notifications" | "shortcuts" | "help" | "logout";
+type SettingsCategory = "account" | "privacy" | "chats" | "notifications" | "shortcuts" | "help" | "logout" | "advanced";
 
 interface SettingsItem {
     id: SettingsCategory;
@@ -16,10 +16,78 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
     const [selectedCategory, setSelectedCategory] = useState<SettingsCategory | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [profile, setProfile] = useState<api.Contact | null>(null);
+    const [customCSS, setCustomCSS] = useState("");
+    const [customJS, setCustomJS] = useState("");
 
     useEffect(() => {
         GetProfile("").then(setProfile);
+        GetCustomCSS().then(setCustomCSS);
+        GetCustomJS().then(setCustomJS);
     }, []);
+
+    const handleSaveCSS = async () => {
+        await SetCustomCSS(customCSS);
+        
+        // Apply CSS immediately
+        let style = document.getElementById('custom-css');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'custom-css';
+            document.head.appendChild(style);
+        }
+        style.innerHTML = customCSS;
+
+        alert("Custom CSS saved and applied!");
+    };
+
+    const handleSaveJS = async () => {
+        await SetCustomJS(customJS);
+
+        // Apply JS immediately
+        const oldScript = document.getElementById('custom-js');
+        if (oldScript) {
+            oldScript.remove();
+        }
+        if (customJS) {
+            const script = document.createElement('script');
+            script.id = 'custom-js';
+            script.innerHTML = customJS;
+            document.body.appendChild(script);
+        }
+
+        alert("Custom JS saved and applied!");
+    };
+
+    const handleReloadCustom = async () => {
+        const css = await GetCustomCSS();
+        setCustomCSS(css);
+        let style = document.getElementById('custom-css');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'custom-css';
+            document.head.appendChild(style);
+        }
+        style.innerHTML = css;
+
+        const js = await GetCustomJS();
+        setCustomJS(js);
+        const oldScript = document.getElementById('custom-js');
+        if (oldScript) {
+            oldScript.remove();
+        }
+        if (js) {
+            const script = document.createElement('script');
+            script.id = 'custom-js';
+            script.innerHTML = js;
+            document.body.appendChild(script);
+        }
+        alert("Custom CSS and JS reloaded from disk!");
+    };
+
+    const handleReinitialize = async () => {
+        await Reinitialize();
+        alert("Reinitialized!");
+    };
 
     const settingsItems: SettingsItem[] = [
         {
@@ -75,6 +143,15 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
                     <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"></path>
                     <path d="M11 11h2v6h-2zm0-4h2v2h-2z"></path>
+                </svg>
+            )
+        },
+        {
+            id: "advanced",
+            label: "Advanced",
+            icon: (
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                    <path d="M12 16a2 2 0 0 1 2 2 2 2 0 0 1-2 2 2 2 0 0 1-2-2 2 2 0 0 1 2-2m0-6a2 2 0 0 1 2 2 2 2 0 0 1-2 2 2 2 0 0 1-2-2 2 2 0 0 1 2-2m0-6a2 2 0 0 1 2 2 2 2 0 0 1-2 2 2 2 0 0 1-2-2 2 2 0 0 1 2-2Z"></path>
                 </svg>
             )
         },
@@ -169,7 +246,69 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
 
             {/* Main Content */}
             <div className="flex-1 bg-light-secondary dark:bg-dark-secondary flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
-                {selectedCategory ? (
+                {selectedCategory === "advanced" ? (
+                    <div className="w-full max-w-2xl px-8 py-6 overflow-y-auto h-full">
+                        <h2 className="text-2xl font-light mb-6 text-light-text dark:text-dark-text">Advanced Settings</h2>
+                        
+                        <div className="mb-8">
+                            <h3 className="text-lg font-medium mb-2 text-light-text dark:text-dark-text">Custom CSS</h3>
+                            <textarea 
+                                className="w-full h-40 p-3 bg-white dark:bg-dark-tertiary border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono text-light-text dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-green-500"
+                                value={customCSS}
+                                onChange={(e) => setCustomCSS(e.target.value)}
+                                placeholder="/* Enter custom CSS here */"
+                            />
+                            <button 
+                                onClick={handleSaveCSS}
+                                className="mt-2 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                            >
+                                Save CSS
+                            </button>
+                        </div>
+
+                        <div className="mb-8">
+                            <h3 className="text-lg font-medium mb-2 text-light-text dark:text-dark-text">Custom JS</h3>
+                            <textarea 
+                                className="w-full h-40 p-3 bg-white dark:bg-dark-tertiary border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono text-light-text dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-green-500"
+                                value={customJS}
+                                onChange={(e) => setCustomJS(e.target.value)}
+                                placeholder="// Enter custom JS here"
+                            />
+                            <button 
+                                onClick={handleSaveJS}
+                                className="mt-2 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                            >
+                                Save JS
+                            </button>
+                        </div>
+
+                        <div className="mb-8 border-t border-gray-200 dark:border-gray-700 pt-6">
+                            <h3 className="text-lg font-medium mb-2 text-light-text dark:text-dark-text">Reload Customizations</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                                Reload custom CSS and JS from disk. Useful if you edited the files externally.
+                            </p>
+                            <button 
+                                onClick={handleReloadCustom}
+                                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                            >
+                                Reload CSS & JS
+                            </button>
+                        </div>
+
+                        <div className="mb-8 border-t border-gray-200 dark:border-gray-700 pt-6">
+                            <h3 className="text-lg font-medium mb-2 text-light-text dark:text-dark-text">Session Management</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                                Re-initialize the WhatsApp connection. Use this if you're experiencing sync issues.
+                            </p>
+                            <button 
+                                onClick={handleReinitialize}
+                                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                            >
+                                Re-initialize Connection
+                            </button>
+                        </div>
+                    </div>
+                ) : selectedCategory ? (
                     <div className="text-center">
                         <h2 className="text-2xl font-light mb-4">
                             {settingsItems.find(i => i.id === selectedCategory)?.label}
