@@ -56,7 +56,10 @@ func (a *Api) Startup(ctx context.Context) {
 		panic(err)
 	}
 	a.waClient = wa.NewClient(ctx, a.cw.GetContainer())
-	a.messageStore = store.NewMessageStore()
+	a.messageStore, err = store.NewMessageStore()
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (a *Api) Login() error {
