@@ -88,12 +88,12 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
             const unisex = Array.from(new Map((msgs || []).map(m => [m.Info.ID, m])).values());
             
             setMessages(unisex);
-            setTimeout(scrollToBottom, 100);
+            setTimeout(() => scrollToBottom(true), 100);
         }).catch(console.error);
     };
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollToBottom = (instant = false) => {
+        messagesEndRef.current?.scrollIntoView({ behavior: instant ? "auto" : "smooth"});
     };
 
     const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
