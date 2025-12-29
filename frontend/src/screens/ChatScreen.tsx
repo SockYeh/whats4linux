@@ -123,7 +123,7 @@ export function ChatListScreen({ onOpenSettings }: { onOpenSettings: () => void 
             </svg>
           </div>
           <div className="flex gap-4 text-gray-500 dark:text-gray-400">
-            <button title="New Chat" className="hover:bg-gray-500 p-2 rounded-full">
+            <button title="New Chat" className="hover:bg-hover-icons p-2 rounded-full">
               <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
                 <path d="M19.005 3.175H4.674C3.642 3.175 3 3.789 3 4.821V21.02l3.544-3.514h12.461c1.033 0 2.064-1.06 2.064-2.093V4.821c-.001-1.032-1.032-1.646-2.064-1.646zm-4.989 9.869H6.666V11.5h7.35v1.544zm3.35-4.135H6.666V7.36h10.7v1.55z"></path>
               </svg>
@@ -131,7 +131,7 @@ export function ChatListScreen({ onOpenSettings }: { onOpenSettings: () => void 
             <button
               title="Menu"
               onClick={onOpenSettings}
-              className="hover:bg-gray-500 p-2 rounded-full"
+              className="hover:bg-hover-icons p-2 rounded-full"
             >
               <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
                 <path d="M12 7a2 2 0 1 0-.001-4.001A2 2 0 0 0 12 7zm0 2a2 2 0 1 0-.001 3.999A2 2 0 0 0 12 9zm0 6a2 2 0 1 0-.001 3.999A2 2 0 0 0 12 15z"></path>

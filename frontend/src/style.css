@@ -11,6 +11,7 @@
   --color-light-primary: #00a884;
   --color-light-secondary: #f0f2f5;
   --color-green: #21c063;
+  --color-hover-icons: #2d2e2e;
 }
 
 @variant dark (&:where(.dark, .dark *));
