@@ -15,92 +15,90 @@
 @variant dark (&:where(.dark, .dark *));
 
 body {
-    background-color: #f0f2f5;
-    color: #000000;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont;
+  background-color: #f0f2f5;
+  color: #000000;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont;
 }
 
 .dark body {
-    background-color: #000000;
-    color: #ffffff;
+  background-color: #000000;
+  color: #ffffff;
 }
 
-  .wa-root {
-    height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  
-  .wa-card {
-    width: 900px;
-    height: 520px;
-    background: white;
-    display: flex;
-    border-radius: 8px;
-    box-shadow: 0 2px 20px rgba(0,0,0,0.08);
-  }
-  
-  /* LEFT */
-  .wa-left {
-    flex: 1;
-    padding: 48px;
-  }
-  
-  .wa-logo {
-    width: 40px;
-    margin-bottom: 24px;
-  }
-  
-  .wa-left h1 {
-    font-size: 26px;
-    font-weight: 500;
-    margin-bottom: 24px;
-  }
-  
-  .wa-left ol {
-    padding-left: 18px;
-    color: #3b4a54;
-    line-height: 1.8;
-  }
-  
-  .wa-login-btn {
-    margin-top: 32px;
-    background: #25d366;
-    color: white;
-    border: none;
-    padding: 10px 18px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  
-  /* RIGHT */
-  .wa-right {
-    width: 360px;
-    background: #f7f8fa;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .qr-box {
-    background: white;
-    padding: 16px;
-    border-radius: 6px;
-  }
-  
-  .qr-text {
-    margin-top: 16px;
-    color: #667781;
-    font-size: 14px;
-  }
-  
-  .qr-status {
-    margin-top: 8px;
-    font-size: 13px;
-    color: #25d366;
-  }
-  
-  
+.wa-root {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.wa-card {
+  width: 900px;
+  height: 520px;
+  background: white;
+  display: flex;
+  border-radius: 8px;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* LEFT */
+.wa-left {
+  flex: 1;
+  padding: 48px;
+}
+
+.wa-logo {
+  width: 40px;
+  margin-bottom: 24px;
+}
+
+.wa-left h1 {
+  font-size: 26px;
+  font-weight: 500;
+  margin-bottom: 24px;
+}
+
+.wa-left ol {
+  padding-left: 18px;
+  color: #3b4a54;
+  line-height: 1.8;
+}
+
+.wa-login-btn {
+  margin-top: 32px;
+  background: #25d366;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* RIGHT */
+.wa-right {
+  width: 360px;
+  background: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-box {
+  background: white;
+  padding: 16px;
+  border-radius: 6px;
+}
+
+.qr-text {
+  margin-top: 16px;
+  color: #667781;
+  font-size: 14px;
+}
+
+.qr-status {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #25d366;
+}

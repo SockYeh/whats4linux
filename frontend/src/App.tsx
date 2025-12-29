@@ -1,87 +1,92 @@
-import { useEffect, useRef, useState } from "react";
-import { Login, GetCustomCSS, GetCustomJS } from "../wailsjs/go/api/Api";
-import { EventsOn } from "../wailsjs/runtime/runtime";
-import QRCode from "qrcode";
-import { ChatListScreen } from "./screens/ChatScreen";
-import { LoginScreen } from "./screens/LoginScreen";
-import { SettingsScreen } from "./screens/SettingsScreen";
+import { useEffect, useRef, useState } from "react"
+import { Login, GetCustomCSS, GetCustomJS } from "../wailsjs/go/api/Api"
+import { EventsOn } from "../wailsjs/runtime/runtime"
+import QRCode from "qrcode"
+import { ChatListScreen } from "./screens/ChatScreen"
+import { LoginScreen } from "./screens/LoginScreen"
+import { SettingsScreen } from "./screens/SettingsScreen"
+import darkModeMoon from "./assets/svgs/dark_mode_moon.svg"
+import lightModeSun from "./assets/svgs/light_mode.svg"
 
-type Screen = "login" | "chats" | "settings";
+type Screen = "login" | "chats" | "settings"
 
 function App() {
-  const [screen, setScreen] = useState<Screen>("login");
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [status, setStatus] = useState<string>("waiting");
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [notifications, setNotifications] = useState<{id: number, message: string}[]>([]);
+  const [screen, setScreen] = useState<Screen>("login")
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [status, setStatus] = useState<string>("waiting")
+  const [theme, setTheme] = useState<"light" | "dark">("light")
+  const [notifications, setNotifications] = useState<{ id: number; message: string }[]>([])
 
   useEffect(() => {
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setTheme('dark');
+    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      setTheme("dark")
     }
-  }, []);
+  }, [])
 
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark")
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark")
     }
-  }, [theme]);
+  }, [theme])
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
+    setTheme((prev) => (prev === "light" ? "dark" : "light"))
+  }
 
   useEffect(() => {
-    Login();
+    Login()
 
-    GetCustomCSS().then(css => {
+    GetCustomCSS().then((css) => {
       if (css) {
-        const style = document.createElement('style');
-        style.id = 'custom-css';
-        style.innerHTML = css;
-        document.head.appendChild(style);
+        const style = document.createElement("style")
+        style.id = "custom-css"
+        style.innerHTML = css
+        document.head.appendChild(style)
       }
-    });
+    })
 
-    GetCustomJS().then(js => {
+    GetCustomJS().then((js) => {
       if (js) {
-        const script = document.createElement('script');
-        script.id = 'custom-js';
-        script.innerHTML = js;
-        document.body.appendChild(script);
+        const script = document.createElement("script")
+        script.id = "custom-js"
+        script.innerHTML = js
+        document.body.appendChild(script)
       }
-    });
-  }, []);
+    })
+  }, [])
 
   useEffect(() => {
     const unsubQR = EventsOn("wa:qr", async (qr: string) => {
-      if (!canvasRef.current) return;
-      await QRCode.toCanvas(canvasRef.current, qr, { width: 300, color: { dark: '#000000', light: '#ffffff' } });
-    });
+      if (!canvasRef.current) return
+      await QRCode.toCanvas(canvasRef.current, qr, {
+        width: 300,
+        color: { dark: "#000000", light: "#ffffff" },
+      })
+    })
 
     const unsubStatus = EventsOn("wa:status", (status: string) => {
-      setStatus(status);
+      setStatus(status)
       if (status === "logged_in" || status === "success") {
-        setScreen("chats");
+        setScreen("chats")
       }
-    });
+    })
 
     const unsubDownload = EventsOn("download:complete", (fileName: string) => {
-      const id = Date.now();
-      setNotifications(prev => [...prev, { id, message: `Downloaded: ${fileName}` }]);
+      const id = Date.now()
+      setNotifications((prev) => [...prev, { id, message: `Downloaded: ${fileName}` }])
       setTimeout(() => {
-        setNotifications(prev => prev.filter(n => n.id !== id));
-      }, 3000);
-    });
+        setNotifications((prev) => prev.filter((n) => n.id !== id))
+      }, 3000)
+    })
 
     return () => {
-      unsubQR();
-      unsubStatus();
-      unsubDownload();
-    };
-  }, []);
+      unsubQR()
+      unsubStatus()
+      unsubDownload()
+    }
+  }, [])
 
   return (
     <div
@@ -115,10 +120,10 @@ function App() {
           <ChatListScreen onOpenSettings={() => setScreen("settings")} />
         </div>
       )}
-      
+
       {screen === "settings" && <SettingsScreen onBack={() => setScreen("chats")} />}
     </div>
-  );
+  )
 }
 
-export default App;
+export default App
