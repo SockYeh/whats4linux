@@ -10,6 +10,7 @@ interface MessageItemProps {
   message: store.Message
   chatId: string
   sentMediaCache: React.MutableRefObject<Map<string, string>>
+  onReply?: (message: store.Message) => void
 }
 
 const formatSize = (bytes: number) => {
@@ -20,15 +21,13 @@ const formatSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i]
 }
 
-export function MessageItem({ message, chatId, sentMediaCache }: MessageItemProps) {
+export function MessageItem({ message, chatId, sentMediaCache, onReply }: MessageItemProps) {
   const isFromMe = message.Info.IsFromMe
   const content = message.Content
   const isSticker = !!content?.stickerMessage
   const [senderName, setSenderName] = useState(message.Info.PushName || "Unknown")
 
-  const handleReply = () => {
-    // TODO: Implement reply functionality
-  }
+  const handleReply = () => onReply?.(message)
 
   const handleReplyPrivately = () => {
     // TODO: Implement reply privately functionality

@@ -23,6 +23,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
   const [pastedImage, setPastedImage] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedFileType, setSelectedFileType] = useState<string>("")
+  const [replyingTo, setReplyingTo] = useState<store.Message | null>(null)
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -113,6 +114,22 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
     setTimeout(adjustTextareaHeight, 0)
   }
 
+  const buildContextInfo = (): any | undefined => {
+    if (!replyingTo) return undefined
+
+    const sender = replyingTo.Info.Sender
+    const participant = sender?.User
+      ? `${sender.User}@${sender.Server || "s.whatsapp.net"}`
+      : chatId
+
+    return {
+      stanzaID: replyingTo.Info.ID,
+      participant,
+      remoteJID: chatId,
+      quotedMessage: replyingTo.Content,
+    }
+  }
+
   const handleSendMessage = async () => {
     if (!inputText.trim() && !pastedImage && !selectedFile) return
 
@@ -120,21 +137,26 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
     const imageToSend = pastedImage
     const fileToSend = selectedFile
     const fileTypeToSend = selectedFileType
+    const quotedMessageId = replyingTo?.Info.ID
+    const contextInfo = buildContextInfo()
 
     setInputText("")
     setPastedImage(null)
     setSelectedFile(null)
     setSelectedFileType("")
+    setReplyingTo(null)
     if (textareaRef.current) textareaRef.current.style.height = "auto"
 
     const tempId = `temp-${Date.now()}`
     const tempMsg: any = {
       Info: { ID: tempId, IsFromMe: true, Timestamp: new Date().toISOString() },
       Content: imageToSend
-        ? { imageMessage: { caption: textToSend, _tempImage: imageToSend } }
+        ? { imageMessage: { caption: textToSend, _tempImage: imageToSend, contextInfo } }
         : fileToSend
-          ? { [`${fileTypeToSend}Message`]: { caption: textToSend, _tempFile: fileToSend } }
-          : { conversation: textToSend },
+          ? { [`${fileTypeToSend}Message`]: { caption: textToSend, _tempFile: fileToSend, contextInfo } }
+          : replyingTo
+            ? { extendedTextMessage: { text: textToSend, contextInfo } }
+            : { conversation: textToSend },
     }
 
     setMessages(chatId, [...chatMessages, tempMsg])
@@ -147,6 +169,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
           type: "image",
           base64Data: base64,
           text: textToSend,
+          quotedMessageId,
         })
         if (newId) sentMediaCache.current.set(newId, imageToSend)
       } else if (fileToSend) {
@@ -157,18 +180,20 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
             type: fileTypeToSend,
             base64Data: base64,
             text: textToSend,
+            quotedMessageId,
           })
           if (newId) sentMediaCache.current.set(newId, event.target?.result as string)
         }
         reader.readAsDataURL(fileToSend)
       } else {
-        await SendMessage(chatId, { type: "text", text: textToSend })
+        await SendMessage(chatId, { type: "text", text: textToSend, quotedMessageId })
       }
       loadMessages()
     } catch (err) {
       console.error("Failed to send:", err)
       setMessages(chatId, chatMessages)
       setInputText(textToSend)
+      setReplyingTo(replyingTo)
     }
   }
 
@@ -176,6 +201,15 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
     loadMessages()
     const unsub = EventsOn("wa:new_message", loadMessages)
     return () => unsub()
+  }, [chatId])
+
+  useEffect(() => {
+    setReplyingTo(null)
+    setInputText("")
+    setPastedImage(null)
+    setSelectedFile(null)
+    setSelectedFileType("")
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
   }, [chatId])
 
   useEffect(() => {
@@ -201,6 +235,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         messages={chatMessages}
         messagesEndRef={messagesEndRef}
         sentMediaCache={sentMediaCache}
+        onReply={setReplyingTo}
       />
       <ChatInput
         inputText={inputText}
@@ -212,6 +247,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         fileInputRef={fileInputRef}
         emojiPickerRef={emojiPickerRef}
         emojiButtonRef={emojiButtonRef}
+        replyingTo={replyingTo}
         onInputChange={handleInputChange}
         onKeyDown={e =>
           e.key === "Enter" && !e.shiftKey && (e.preventDefault(), handleSendMessage())
@@ -222,6 +258,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         onRemoveFile={removeSelectedFile}
         onEmojiClick={handleEmojiClick}
         onToggleEmojiPicker={() => setShowEmojiPicker(!showEmojiPicker)}
+        onCancelReply={() => setReplyingTo(null)}
       />
     </div>
   )

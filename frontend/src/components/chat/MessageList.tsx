@@ -6,6 +6,7 @@ interface MessageListProps {
   messages: store.Message[]
   messagesEndRef: React.RefObject<HTMLDivElement | null>
   sentMediaCache: React.MutableRefObject<Map<string, string>>
+  onReply?: (message: store.Message) => void
 }
 
 export function MessageList({
@@ -13,6 +14,7 @@ export function MessageList({
   messages,
   messagesEndRef,
   sentMediaCache,
+  onReply,
 }: MessageListProps) {
   return (
     <div
@@ -25,6 +27,7 @@ export function MessageList({
           message={msg}
           chatId={chatId}
           sentMediaCache={sentMediaCache}
+          onReply={onReply}
         />
       ))}
       <div ref={messagesEndRef} />

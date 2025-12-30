@@ -1,10 +1,9 @@
 import React, { lazy, Suspense } from "react"
 import clsx from "clsx"
 import data from "@emoji-mart/data"
-import { EmojiIcon, AttachIcon, SendIcon } from "../../assets/svgs/chat_icons"
-
-const EmojiPicker = lazy(() => import("@emoji-mart/react"))
-
+import { EmojiIcon, AttachIcon, SendIcon, CloseIcon } from "../../assets/svgs/chat_icons"
+import { store } from "../../../wailsjs/go/models"
+const EmojiPicker = React.lazy(() => import("@emoji-mart/react"))
 interface ChatInputProps {
   inputText: string
   pastedImage: string | null
@@ -15,6 +14,7 @@ interface ChatInputProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>
   emojiPickerRef: React.RefObject<HTMLDivElement | null>
   emojiButtonRef: React.RefObject<HTMLButtonElement | null>
+  replyingTo: store.Message | null
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
   onKeyDown: (e: React.KeyboardEvent) => void
   onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void
@@ -23,6 +23,7 @@ interface ChatInputProps {
   onRemoveFile: () => void
   onEmojiClick: (emoji: string) => void
   onToggleEmojiPicker: () => void
+  onCancelReply: () => void
 }
 
 const FILE_TYPE_ICONS = {
@@ -106,6 +107,7 @@ export function ChatInput({
   fileInputRef,
   emojiPickerRef,
   emojiButtonRef,
+  replyingTo,
   onInputChange,
   onKeyDown,
   onPaste,
@@ -114,11 +116,44 @@ export function ChatInput({
   onRemoveFile,
   onEmojiClick,
   onToggleEmojiPicker,
+  onCancelReply,
 }: ChatInputProps) {
   const hasContent = inputText.trim() || pastedImage || selectedFile
 
   const handleEmojiSelect = (emoji: any) => {
     onEmojiClick(emoji.native)
+  }
+
+  const renderReplyPreview = () => {
+    if (!replyingTo) return null
+    const content = replyingTo.Content
+    const previewText =
+      content?.conversation ||
+      content?.extendedTextMessage?.text ||
+      (content?.imageMessage ? "📷 Photo" : undefined) ||
+      (content?.videoMessage ? "🎥 Video" : undefined) ||
+      (content?.audioMessage ? "🎵 Audio" : undefined) ||
+      (content?.documentMessage ? "📄 Document" : undefined) ||
+      (content?.stickerMessage ? "Sticker" : undefined) ||
+      "Message"
+
+    const senderLabel = replyingTo.Info.IsFromMe ? "You" : replyingTo.Info.PushName || "Contact"
+
+    return (
+      <div className="mb-2 flex items-start gap-2 rounded-md bg-black/5 dark:bg-white/10 p-2 text-xs">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-green-600 dark:text-green-400">Replying to {senderLabel}</div>
+          <div className="line-clamp-2 opacity-80">{previewText}</div>
+        </div>
+        <button
+          onClick={onCancelReply}
+          className="ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
+          title="Cancel reply"
+        >
+          <CloseIcon />
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -144,7 +179,7 @@ export function ChatInput({
       {selectedFile && (
         <FilePreview file={selectedFile} fileType={selectedFileType} onRemove={onRemoveFile} />
       )}
-
+      {renderReplyPreview()}
       {/* Main Input Row */}
       <div className="flex items-end gap-2">
         {/* Emoji Button */}

@@ -37,9 +37,10 @@ type ChatElement struct {
 }
 
 type MessageContent struct {
-	Type       string `json:"type"`
-	Text       string `json:"text,omitempty"`
-	Base64Data string `json:"base64Data,omitempty"`
+	Type            string `json:"type"`
+	Text            string `json:"text,omitempty"`
+	Base64Data      string `json:"base64Data,omitempty"`
+	QuotedMessageID string `json:"quotedMessageId,omitempty"`
 }
 
 // Api struct
@@ -378,6 +379,30 @@ func (a *Api) GetProfile(jidStr string) (Contact, error) {
 		AvatarURL:  avatarURL,
 	}, nil
 }
+
+func (a *Api) buildQuotedContext(chatJID types.JID, quotedMessageID string) (*waE2E.ContextInfo, error) {
+	if quotedMessageID == "" {
+		return nil, nil
+	}
+
+	quotedMsg := a.messageStore.GetMessage(chatJID, quotedMessageID)
+	if quotedMsg == nil || quotedMsg.Content == nil {
+		return nil, fmt.Errorf("quoted message not found")
+	}
+
+	stanzaID := quotedMsg.Info.ID
+	contextInfo := &waE2E.ContextInfo{
+		StanzaID:      &stanzaID,
+		QuotedMessage: quotedMsg.Content,
+	}
+
+	if quotedMsg.Info.Sender.User != "" {
+		participant := quotedMsg.Info.Sender.String()
+		contextInfo.Participant = &participant
+	}
+
+	return contextInfo, nil
+}
 func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error) {
 	if a.waClient.Store.ID == nil {
 		return "", fmt.Errorf("client not logged in")
@@ -392,8 +417,22 @@ func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error
 
 	switch content.Type {
 	case "text":
-		msgContent = &waE2E.Message{
-			Conversation: &content.Text,
+		contextInfo, err := a.buildQuotedContext(parsedJID, content.QuotedMessageID)
+		if err != nil {
+			return "", err
+		}
+
+		if contextInfo != nil {
+			msgContent = &waE2E.Message{
+				ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+					Text:        &content.Text,
+					ContextInfo: contextInfo,
+				},
+			}
+		} else {
+			msgContent = &waE2E.Message{
+				Conversation: &content.Text,
+			}
 		}
 	case "image":
 		// Decode base64 image data
