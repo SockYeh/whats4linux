@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react"
-import { SendMessage, FetchMessages } from "../../wailsjs/go/api/Api"
+import { SendMessage, FetchMessages, SendChatPresence } from "../../wailsjs/go/api/Api"
 import { store } from "../../wailsjs/go/models"
 import { EventsOn } from "../../wailsjs/runtime/runtime"
 import { useMessageStore, useUIStore } from "../store"
@@ -64,11 +64,18 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
 
     setTypingIndicator(chatId, true)
 
-    if (typingTimeout) clearTimeout(typingTimeout)
+    // Send composing presence
+    SendChatPresence(chatId, "composing", "").catch(() => {});
+
+    // Clear existing timeout
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+    }
 
     const timeout = setTimeout(() => {
+      SendChatPresence(chatId, "paused", "").catch(() => {});
       setTypingIndicator(chatId, false)
-    }, 2000)
+    }, 1000)
 
     setTypingTimeout(timeout)
   }
