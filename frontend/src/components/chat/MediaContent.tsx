@@ -31,6 +31,15 @@ export function MediaContent({ message, type, chatId, sentMediaCache }: MediaCon
     if (type === "sticker") handleDownload()
   }, [message.Info.ID])
 
+  // Cleanup blob URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (mediaSrc?.startsWith("blob:")) {
+        URL.revokeObjectURL(mediaSrc)
+      }
+    }
+  }, [mediaSrc])
+
   const handleDownload = async () => {
     if (mediaSrc || loading) return
     setLoading(true)

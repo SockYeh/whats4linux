@@ -1,9 +1,9 @@
-import { useEffect, useState, useRef } from "react"
-import { SendMessage, FetchMessages, SendChatPresence } from "../../wailsjs/go/api/Api"
+import { useEffect, useState, useRef, useCallback } from "react"
+import { SendMessage, FetchMessagesPaged, SendChatPresence } from "../../wailsjs/go/api/Api"
 import { store } from "../../wailsjs/go/models"
 import { EventsOn } from "../../wailsjs/runtime/runtime"
 import { useMessageStore, useUIStore } from "../store"
-import { MessageList } from "../components/chat/MessageList"
+import { MessageList, type MessageListHandle } from "../components/chat/MessageList"
 import { ChatHeader } from "../components/chat/ChatHeader"
 import { ChatInput } from "../components/chat/ChatInput"
 
@@ -15,7 +15,8 @@ interface ChatDetailProps {
 }
 
 export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailProps) {
-  const { messages, setMessages } = useMessageStore()
+  const { messages, setMessages, updateMessage, prependMessages, setActiveChatId } =
+    useMessageStore()
   const { setTypingIndicator, showEmojiPicker, setShowEmojiPicker } = useUIStore()
 
   const chatMessages = messages[chatId] || []
@@ -26,27 +27,116 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
   const [replyingTo, setReplyingTo] = useState<store.Message | null>(null)
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null)
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const START_INDEX = 100000
+  const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX)
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [isPrefetching, setIsPrefetching] = useState(false)
+  const [initialLoad, setInitialLoad] = useState(true)
+
+  const messageListRef = useRef<MessageListHandle>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sentMediaCache = useRef<Map<string, string>>(new Map())
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
 
-  const scrollToBottom = (instant = false) => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: instant ? "auto" : "smooth" })
-    }, 50)
-  }
+  const scrollToBottom = useCallback((instant = false) => {
+    requestAnimationFrame(() => {
+      messageListRef.current?.scrollToBottom(instant ? "auto" : "smooth")
+    })
+  }, [])
 
-  const loadMessages = () => {
-    FetchMessages(chatId)
+  const loadInitialMessages = useCallback(() => {
+    setInitialLoad(true)
+    // Load latest 50 messages
+    FetchMessagesPaged(chatId, 50, 0)
       .then((msgs: store.Message[]) => {
-        setMessages(chatId, msgs || [])
-        scrollToBottom(true)
+        const loadedMsgs = msgs || []
+        setMessages(chatId, loadedMsgs)
+        setHasMore(loadedMsgs.length >= 50)
+        setFirstItemIndex(START_INDEX)
+        // Small delay to ensure DOM is ready
+        setTimeout(() => scrollToBottom(true), 100)
       })
       .catch(console.error)
-  }
+      .finally(() => setInitialLoad(false))
+  }, [chatId, setMessages, scrollToBottom])
+
+  const loadMoreMessages = useCallback(() => {
+    if (!hasMore || isLoadingMore) return
+
+    const currentMessages = messages[chatId] || []
+    if (currentMessages.length === 0) return
+
+    setIsLoadingMore(true)
+    const oldestMessage = currentMessages[0]
+
+    // Convert ISO string to unix timestamp (seconds)
+    const beforeTimestamp = oldestMessage
+      ? Math.floor(new Date(oldestMessage.Info.Timestamp).getTime() / 1000)
+      : 0
+
+    FetchMessagesPaged(chatId, 50, beforeTimestamp)
+      .then((msgs: store.Message[]) => {
+        if (msgs && msgs.length > 0) {
+          prependMessages(chatId, msgs)
+          setFirstItemIndex(prev => prev - msgs.length)
+          setHasMore(msgs.length >= 50)
+        } else {
+          setHasMore(false)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setIsLoadingMore(false))
+  }, [chatId, hasMore, isLoadingMore, messages, prependMessages])
+
+  const handlePrefetch = useCallback(() => {
+    // Don't prefetch if already loading or no more messages
+    if (!hasMore || isLoadingMore || isPrefetching) return
+
+    const currentMessages = messages[chatId] || []
+    if (currentMessages.length === 0) return
+
+    setIsPrefetching(true)
+    const oldestMessage = currentMessages[0]
+
+    // Convert ISO string to unix timestamp (seconds)
+    const beforeTimestamp = oldestMessage
+      ? Math.floor(new Date(oldestMessage.Info.Timestamp).getTime() / 1000)
+      : 0
+
+    // Prefetch next batch of messages silently
+    FetchMessagesPaged(chatId, 50, beforeTimestamp)
+      .then((msgs: store.Message[]) => {
+        if (msgs && msgs.length > 0) {
+          // Silently prepend messages without changing scroll position
+          prependMessages(chatId, msgs)
+          setFirstItemIndex(prev => prev - msgs.length)
+          setHasMore(msgs.length >= 50)
+        } else {
+          setHasMore(false)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setIsPrefetching(false))
+  }, [chatId, hasMore, isLoadingMore, isPrefetching, messages, prependMessages])
+
+  const handleTrimOldMessages = useCallback(() => {
+    const currentMessages = messages[chatId] || []
+    // When reaching bottom with many messages, reload to initial state
+    if (currentMessages.length > 100) {
+      // Reload the latest 50 messages and reset state
+      FetchMessagesPaged(chatId, 50, 0)
+        .then((msgs: store.Message[]) => {
+          const loadedMsgs = msgs || []
+          setMessages(chatId, loadedMsgs)
+          setHasMore(loadedMsgs.length >= 50)
+          setFirstItemIndex(START_INDEX)
+        })
+        .catch(console.error)
+    }
+  }, [chatId, messages, setMessages])
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current
@@ -194,7 +284,6 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
       } else {
         await SendMessage(chatId, { type: "text", text: textToSend, quotedMessageId })
       }
-      loadMessages()
     } catch (err) {
       console.error("Failed to send:", err)
       setMessages(chatId, chatMessages)
@@ -204,10 +293,26 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
   }
 
   useEffect(() => {
-    loadMessages()
-    const unsub = EventsOn("wa:new_message", loadMessages)
+    setActiveChatId(chatId)
+    setFirstItemIndex(START_INDEX)
+    setHasMore(true)
+    setIsLoadingMore(false)
+    loadInitialMessages()
+  }, [chatId, loadInitialMessages, setActiveChatId])
+
+  // Listen for new messages
+  useEffect(() => {
+    const unsub = EventsOn("wa:new_message", (data: { chatId: string; message: store.Message }) => {
+      if (data?.chatId && data?.message) {
+        updateMessage(data.chatId, data.message)
+        // Auto-scroll when new message arrives in current chat
+        if (data.chatId === chatId) {
+          scrollToBottom(false)
+        }
+      }
+    })
     return () => unsub()
-  }, [chatId])
+  }, [chatId, updateMessage, scrollToBottom])
 
   useEffect(() => {
     setReplyingTo(null)
@@ -237,11 +342,17 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
     <div className="flex flex-col h-full bg-[#efeae2] dark:bg-[#0b141a]">
       <ChatHeader chatName={chatName} chatAvatar={chatAvatar} onBack={onBack} />
       <MessageList
+        ref={messageListRef}
         chatId={chatId}
         messages={chatMessages}
-        messagesEndRef={messagesEndRef}
         sentMediaCache={sentMediaCache}
         onReply={setReplyingTo}
+        onLoadMore={loadMoreMessages}
+        onPrefetch={handlePrefetch}
+        onTrimOldMessages={handleTrimOldMessages}
+        firstItemIndex={firstItemIndex}
+        isLoading={isLoadingMore || initialLoad}
+        hasMore={hasMore}
       />
       <ChatInput
         inputText={inputText}

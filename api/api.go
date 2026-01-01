@@ -183,6 +183,15 @@ func (a *Api) FetchMessages(jid string) ([]store.Message, error) {
 	return messages, nil
 }
 
+func (a *Api) FetchMessagesPaged(jid string, limit int, beforeTimestamp int64) ([]store.Message, error) {
+	parsedJID, err := types.ParseJID(jid)
+	if err != nil {
+		return nil, err
+	}
+	messages := a.messageStore.GetMessagesPaged(parsedJID, beforeTimestamp, limit)
+	return messages, nil
+}
+
 func (a *Api) DownloadMedia(chatJID string, messageID string) (string, error) {
 	parsedJID, err := types.ParseJID(chatJID)
 	if err != nil {
@@ -617,7 +626,15 @@ func (a *Api) mainEventHandler(evt any) {
 	switch v := evt.(type) {
 	case *events.Message:
 		a.messageStore.ProcessMessageEvent(v)
-		runtime.EventsEmit(a.ctx, "wa:new_message")
+		// Emit the message data directly so frontend doesn't need to make an API call
+		msg := store.Message{
+			Info:    v.Info,
+			Content: v.Message,
+		}
+		runtime.EventsEmit(a.ctx, "wa:new_message", map[string]any{
+			"chatId":  v.Info.Chat.String(),
+			"message": msg,
+		})
 	default:
 		// Ignore other events for now
 	}
