@@ -207,7 +207,7 @@ export function MessageItem({ message, chatId, sentMediaCache, onReply }: Messag
           <div className="text-[11px] font-semibold text-blue-500 mb-0.5">{senderName}</div>
         )}
         {contextInfo?.quotedMessage && <QuotedMessage contextInfo={contextInfo} />}
-        <div className="text-sm wrap-break-word">{renderContent()}</div>
+        <div className="text-sm wrap-break-word whitespace-pre-wrap">{renderContent()}</div>
         <div className="text-[10px] text-right opacity-50 mt-1">
           {new Date(message.Info.Timestamp).toLocaleTimeString([], {
             hour: "2-digit",
