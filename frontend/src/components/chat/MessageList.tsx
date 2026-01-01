@@ -86,7 +86,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       followOutput="smooth"
       alignToBottom
       increaseViewportBy={{ top: 300, bottom: 0 }}
-      className="flex-1 overflow-y-auto bg-repeat"
+      className="flex-1 overflow-y-auto bg-repeat virtuoso-scroller"
       style={{ backgroundImage: "url('/assets/images/bg-chat-tile-dark.png')" }}
       itemContent={renderItem}
       components={{
