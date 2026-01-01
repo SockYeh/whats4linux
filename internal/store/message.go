@@ -24,9 +24,11 @@ type Message struct {
 const MaxMessageCacheSize = 50
 
 type MessageStore struct {
-	db          *sql.DB
-	msgMap      *cacher.Cacher[types.JID, []Message]
-	chatListMap *cacher.Cacher[types.JID, ChatMessage]
+	db *sql.DB
+	// [chatJID.User] = []Message
+	msgMap *cacher.Cacher[string, []Message]
+	// [chatJID.User] = ChatMessage
+	chatListMap *cacher.Cacher[string, ChatMessage]
 	mCache      misc.VMap[string, uint8]
 }
 
@@ -35,21 +37,22 @@ func NewMessageStore() (*MessageStore, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	msgCacheOpts := &cacher.NewCacherOpts{
-		TimeToLive:    30 * time.Minute,
-		Revaluate:     true,
-		CleanInterval: 40 * time.Minute,
-	}
-	msgCache := cacher.NewCacher[types.JID, []Message](msgCacheOpts)
+	msgCache := cacher.NewCacher[string, []Message](
+		&cacher.NewCacherOpts{
+			TimeToLive:    30 * time.Minute,
+			Revaluate:     true,
+			CleanInterval: 40 * time.Minute,
+		},
+	)
 
 	// Configure chat list cache (decentralized, separate from messages)
-	chatListCacheOpts := &cacher.NewCacherOpts{
-		TimeToLive:    10 * time.Minute,
-		Revaluate:     true,
-		CleanInterval: 15 * time.Minute,
-	}
-	chatListCache := cacher.NewCacher[types.JID, ChatMessage](chatListCacheOpts)
+	chatListCache := cacher.NewCacher[string, ChatMessage](
+		&cacher.NewCacherOpts{
+			TimeToLive:    10 * time.Minute,
+			Revaluate:     true,
+			CleanInterval: 15 * time.Minute,
+		},
+	)
 
 	ms := &MessageStore{
 		db:          db,
@@ -61,10 +64,6 @@ func NewMessageStore() (*MessageStore, error) {
 	if err := ms.initSchema(); err != nil {
 		return nil, err
 	}
-
-	// if err := ms.loadMessagesFromDB(); err != nil {
-	// 	return nil, err
-	// }
 
 	return ms, nil
 }
@@ -79,7 +78,7 @@ func (ms *MessageStore) ProcessMessageEvent(msg *events.Message) {
 		return
 	}
 	ms.mCache.Set(msg.Info.ID, 1)
-	chat := msg.Info.Chat
+	chat := msg.Info.Chat.User
 	ml, ok := ms.msgMap.Get(chat)
 	if !ok {
 		ml = []Message{}
@@ -103,11 +102,49 @@ func (ms *MessageStore) ProcessMessageEvent(msg *events.Message) {
 }
 
 func (ms *MessageStore) GetMessages(jid types.JID) []Message {
-	ml, ok := ms.msgMap.Get(jid)
+	ml, ok := ms.msgMap.Get(jid.User)
 	if !ok {
 		return []Message{}
 	}
 	return ml
+}
+
+func getMessageArrayFromRows(rows *sql.Rows) []Message {
+	var (
+		messages []Message
+		chat     string
+		msgID    string
+		ts       int64
+		minf     []byte
+		raw      []byte
+	)
+
+	for rows.Next() {
+		minf = minf[:0]
+		raw = raw[:0]
+
+		if err := rows.Scan(&chat, &msgID, &ts, &minf, &raw); err != nil {
+			continue
+		}
+
+		var messageInfo types.MessageInfo
+		if err := gobDecode(minf, &messageInfo); err != nil {
+			continue
+		}
+
+		var waMsg *waE2E.Message
+		waMsg, err := unmarshalMessageContent(raw)
+		if err != nil {
+			continue
+		}
+
+		messages = append(messages, Message{
+			Info:    messageInfo,
+			Content: waMsg,
+		})
+	}
+
+	return messages
 }
 
 // GetMessagesPaged returns a page of messages for a chat
@@ -129,89 +166,10 @@ func (ms *MessageStore) GetMessagesPaged(jid types.JID, beforeTimestamp int64, l
 	if err != nil {
 		return []Message{}
 	}
+
 	defer rows.Close()
 
-	var messages []Message
-	for rows.Next() {
-		var (
-			chat  string
-			msgID string
-			ts    int64
-			minf  []byte
-			raw   []byte
-		)
-
-		if err := rows.Scan(&chat, &msgID, &ts, &minf, &raw); err != nil {
-			continue
-		}
-
-		var messageInfo types.MessageInfo
-		if err := gobDecode(minf, &messageInfo); err != nil {
-			continue
-		}
-
-		var waMsg *waE2E.Message
-		waMsg, err = unmarshalMessageContent(raw)
-		if err != nil {
-			continue
-		}
-
-		messages = append(messages, Message{
-			Info:    messageInfo,
-			Content: waMsg,
-		})
-		ms.mCache.Set(msgID, 1)
-	}
-
-	return messages
-}
-
-// loadAndCacheAllMessages loads all messages for a chat from DB and caches them
-func (ms *MessageStore) loadAndCacheAllMessages(jid types.JID) []Message {
-	rows, err := ms.db.Query(query.SelectMessagesByChat, jid.String())
-	if err != nil {
-		return []Message{}
-	}
-	defer rows.Close()
-
-	var messages []Message
-	for rows.Next() {
-		var (
-			chat  string
-			msgID string
-			ts    int64
-			minf  []byte
-			raw   []byte
-		)
-
-		if err := rows.Scan(&chat, &msgID, &ts, &minf, &raw); err != nil {
-			continue
-		}
-
-		var messageInfo types.MessageInfo
-		if err := gobDecode(minf, &messageInfo); err != nil {
-			continue
-		}
-
-		var waMsg *waE2E.Message
-		waMsg, err = unmarshalMessageContent(raw)
-		if err != nil {
-			continue
-		}
-
-		messages = append(messages, Message{
-			Info:    messageInfo,
-			Content: waMsg,
-		})
-		ms.mCache.Set(msgID, 1)
-	}
-
-	// Cache the loaded messages
-	if len(messages) > 0 {
-		ms.msgMap.Set(jid, messages)
-	}
-
-	return messages
+	return getMessageArrayFromRows(rows)
 }
 
 // loadMessagesFromDBForChat loads messages for a specific chat from DB
@@ -222,54 +180,23 @@ func (ms *MessageStore) loadMessagesFromDBForChat(jid types.JID) []Message {
 	}
 	defer rows.Close()
 
-	var messages []Message
-	for rows.Next() {
-		var (
-			chat  string
-			msgID string
-			ts    int64
-			minf  []byte
-			raw   []byte
-		)
-
-		if err := rows.Scan(&chat, &msgID, &ts, &minf, &raw); err != nil {
-			continue
-		}
-
-		var messageInfo types.MessageInfo
-		if err := gobDecode(minf, &messageInfo); err != nil {
-			continue
-		}
-
-		var waMsg *waE2E.Message
-		waMsg, err = unmarshalMessageContent(raw)
-		if err != nil {
-			continue
-		}
-
-		messages = append(messages, Message{
-			Info:    messageInfo,
-			Content: waMsg,
-		})
-		ms.mCache.Set(msgID, 1)
-	}
-	return messages
+	return getMessageArrayFromRows(rows)
 }
 
 // GetTotalMessageCount returns the total number of messages in a chat
 func (ms *MessageStore) GetTotalMessageCount(jid types.JID) int {
-	ml, ok := ms.msgMap.Get(jid)
+	ml, ok := ms.msgMap.Get(jid.User)
 	if !ok {
 		// Load from DB to get count
 		ml = ms.loadMessagesFromDBForChat(jid)
-		ms.msgMap.Set(jid, ml)
+		ms.msgMap.Set(jid.User, ml)
 		return len(ml)
 	}
 	return len(ml)
 }
 
 func (ms *MessageStore) GetMessage(chatJID types.JID, messageID string) *Message {
-	msgs, ok := ms.msgMap.Get(chatJID)
+	msgs, ok := ms.msgMap.Get(chatJID.User)
 	if !ok {
 		return nil
 	}
@@ -295,14 +222,18 @@ func (ms *MessageStore) GetChatList() []ChatMessage {
 	defer rows.Close()
 
 	var chatList []ChatMessage
+
+	var (
+		chat  string
+		msgID string
+		ts    int64
+		minf  []byte
+		raw   []byte
+	)
+
 	for rows.Next() {
-		var (
-			chat  string
-			msgID string
-			ts    int64
-			minf  []byte
-			raw   []byte
-		)
+		minf = minf[:0]
+		raw = raw[:0]
 
 		if err := rows.Scan(&chat, &msgID, &ts, &minf, &raw); err != nil {
 			continue
@@ -314,7 +245,7 @@ func (ms *MessageStore) GetChatList() []ChatMessage {
 		}
 
 		// Check per-chat cache first
-		if cachedChat, ok := ms.chatListMap.Get(chatJID); ok {
+		if cachedChat, ok := ms.chatListMap.Get(chatJID.User); ok {
 			chatList = append(chatList, cachedChat)
 			continue
 		}
@@ -359,60 +290,11 @@ func (ms *MessageStore) GetChatList() []ChatMessage {
 		}
 
 		// Cache per-chat entry
-		ms.chatListMap.Set(chatJID, chatMsg)
+		ms.chatListMap.Set(chatJID.User, chatMsg)
 		chatList = append(chatList, chatMsg)
 	}
 
 	return chatList
-}
-
-func (ms *MessageStore) loadMessagesFromDB() error {
-	rows, err := ms.db.Query(query.SelectAllMessages)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			chat  string
-			msgID string
-			ts    int64
-			minf  []byte
-			raw   []byte
-		)
-
-		if err := rows.Scan(&chat, &msgID, &ts, &minf, &raw); err != nil {
-			return err
-		}
-
-		var messageInfo types.MessageInfo
-		if err := gobDecode(minf, &messageInfo); err != nil {
-			continue
-		}
-
-		var waMsg *waE2E.Message
-		waMsg, err = unmarshalMessageContent(raw)
-		if err != nil {
-			continue
-		}
-
-		chatJID, err := types.ParseJID(chat)
-		if err != nil {
-			continue
-		}
-
-		ml, ok := ms.msgMap.Get(chatJID)
-		if !ok {
-			ml = []Message{}
-		}
-		ms.msgMap.Set(chatJID, append(ml, Message{
-			Info:    messageInfo,
-			Content: waMsg,
-		}))
-		ms.mCache.Set(msgID, 1)
-	}
-	return nil
 }
 
 func (ms *MessageStore) insertMessageToDB(msg *Message) error {

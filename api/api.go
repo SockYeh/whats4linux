@@ -333,6 +333,8 @@ func (a *Api) GetChatList() ([]ChatElement, error) {
 		// }
 		// fc.AvatarURL = url
 
+		// todo: remove this later
+		fc.FullName = fmt.Sprintf("%s (%s)", fc.FullName, cm.JID.String())
 		ce[i] = ChatElement{
 			LatestMessage: cm.MessageText,
 			Contact:       fc,
