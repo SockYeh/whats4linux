@@ -15,7 +15,7 @@ interface ChatDetailProps {
 }
 
 export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailProps) {
-  const { messages, setMessages, updateMessage, prependMessages } = useMessageStore()
+  const { messages, setMessages, updateMessage, prependMessages, setActiveChatId } = useMessageStore()
   const { setTypingIndicator, showEmojiPicker, setShowEmojiPicker } = useUIStore()
 
   const chatMessages = messages[chatId] || []
@@ -26,10 +26,11 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
   const [replyingTo, setReplyingTo] = useState<store.Message | null>(null)
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null)
 
-  // Lazy loading state
-  const [firstItemIndex, setFirstItemIndex] = useState(10000)
+  const START_INDEX = 100000
+  const [firstItemIndex, setFirstItemIndex] = useState(START_INDEX)
   const [hasMore, setHasMore] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [initialLoad, setInitialLoad] = useState(true)
 
   const messageListRef = useRef<MessageListHandle>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -38,29 +39,35 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
 
-  const scrollToBottom = (instant = false) => {
-    setTimeout(() => {
+  const scrollToBottom = useCallback((instant = false) => {
+    requestAnimationFrame(() => {
       messageListRef.current?.scrollToBottom(instant ? "auto" : "smooth")
-    }, 50)
-  }
+    })
+  }, [])
 
-  const loadInitialMessages = () => {
+  const loadInitialMessages = useCallback(() => {
+    setInitialLoad(true)
     // Load latest 50 messages
     FetchMessagesPaged(chatId, 50, 0)
       .then((msgs: store.Message[]) => {
-        setMessages(chatId, msgs || [])
-        setHasMore((msgs?.length || 0) >= 50)
-        setFirstItemIndex(10000) // Reset index
-        scrollToBottom(true)
+        const loadedMsgs = msgs || []
+        setMessages(chatId, loadedMsgs)
+        setHasMore(loadedMsgs.length >= 50)
+        setFirstItemIndex(START_INDEX)
+        // Small delay to ensure DOM is ready
+        setTimeout(() => scrollToBottom(true), 100)
       })
       .catch(console.error)
-  }
+      .finally(() => setInitialLoad(false))
+  }, [chatId, setMessages, scrollToBottom])
 
   const loadMoreMessages = useCallback(() => {
     if (!hasMore || isLoadingMore) return
 
-    setIsLoadingMore(true)
     const currentMessages = messages[chatId] || []
+    if (currentMessages.length === 0) return
+
+    setIsLoadingMore(true)
     const oldestMessage = currentMessages[0]
 
     // Convert ISO string to unix timestamp (seconds)
@@ -228,9 +235,6 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
       } else {
         await SendMessage(chatId, { type: "text", text: textToSend, quotedMessageId })
       }
-      // We don't need to reload all messages, just ensure we have the latest
-      // But for simplicity, let's reload the latest page
-      loadInitialMessages()
     } catch (err) {
       console.error("Failed to send:", err)
       setMessages(chatId, chatMessages)
@@ -240,19 +244,26 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
   }
 
   useEffect(() => {
+    setActiveChatId(chatId)
+    setFirstItemIndex(START_INDEX)
+    setHasMore(true)
+    setIsLoadingMore(false)
     loadInitialMessages()
-    // Listen for WhatsMeow events - receive message data directly, no API call needed
+  }, [chatId, loadInitialMessages, setActiveChatId])
+
+  // Listen for new messages
+  useEffect(() => {
     const unsub = EventsOn("wa:new_message", (data: { chatId: string; message: store.Message }) => {
       if (data?.chatId && data?.message) {
         updateMessage(data.chatId, data.message)
         // Auto-scroll when new message arrives in current chat
         if (data.chatId === chatId) {
-          scrollToBottom()
+          scrollToBottom(false)
         }
       }
     })
     return () => unsub()
-  }, [chatId, updateMessage])
+  }, [chatId, updateMessage, scrollToBottom])
 
   useEffect(() => {
     setReplyingTo(null)
@@ -287,8 +298,10 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         messages={chatMessages}
         sentMediaCache={sentMediaCache}
         onReply={setReplyingTo}
-        startReached={loadMoreMessages}
+        onLoadMore={loadMoreMessages}
         firstItemIndex={firstItemIndex}
+        isLoading={isLoadingMore || initialLoad}
+        hasMore={hasMore}
       />
       <ChatInput
         inputText={inputText}

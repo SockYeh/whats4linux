@@ -52,4 +52,22 @@ const (
 	FROM messages
 	ORDER BY timestamp ASC
 	`
+
+	SelectMessagesByChat = `
+	SELECT chat, message_id, timestamp, msg_info, raw_message
+	FROM messages
+	WHERE chat = ?
+	ORDER BY timestamp ASC
+	`
+
+	SelectChatList = `
+	SELECT chat, message_id, timestamp, msg_info, raw_message
+	FROM messages
+	WHERE (chat, timestamp) IN (
+		SELECT chat, MAX(timestamp)
+		FROM messages
+		GROUP BY chat
+	)
+	ORDER BY timestamp DESC
+	`
 )
