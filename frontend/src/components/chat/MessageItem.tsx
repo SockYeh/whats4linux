@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react"
 import { store } from "../../../wailsjs/go/models"
-import { DownloadImageToFile, GetContact } from "../../../wailsjs/go/api/Api"
+import { DownloadMedia, GetContact } from "../../../wailsjs/go/api/Api"
 import { parseWhatsAppMarkdown } from "../../utils/markdown"
 import { MediaContent } from "./MediaContent"
 import { QuotedMessage } from "./QuotedMessage"
-import { ImagePreview } from "./ImagePreview"
 import clsx from "clsx"
 import { MessageMenu } from "./MessageMenu"
 
@@ -28,19 +27,6 @@ export function MessageItem({ message, chatId, sentMediaCache, onReply }: Messag
   const content = message.Content
   const isSticker = !!content?.stickerMessage
   const [senderName, setSenderName] = useState(message.Info.PushName || "Unknown")
-  const [showImagePreview, setShowImagePreview] = useState(false)
-  const [previewImageSrc, setPreviewImageSrc] = useState("")
-
-  const handleImageClick = (src: string) => {
-    setPreviewImageSrc(src)
-    setShowImagePreview(true)
-  }
-
-  const handleImageDownload = async () => {
-    try {
-      await DownloadImageToFile(message.Info.ID)
-    } catch (e) {}
-  }
 
   const handleReply = () => onReply?.(message)
 
@@ -56,6 +42,7 @@ export function MessageItem({ message, chatId, sentMediaCache, onReply }: Messag
     const textToCopy = content?.conversation || content?.extendedTextMessage?.text || ""
     if (textToCopy) {
       navigator.clipboard.writeText(textToCopy)
+      console.log("Copied to clipboard")
     }
   }
 
@@ -113,8 +100,6 @@ export function MessageItem({ message, chatId, sentMediaCache, onReply }: Messag
             type="image"
             chatId={chatId}
             sentMediaCache={sentMediaCache}
-            onImageClick={handleImageClick}
-            onDownload={handleImageDownload}
           />
           {content.imageMessage.caption && (
             <div className="mt-1">{parseWhatsAppMarkdown(content.imageMessage.caption)}</div>
@@ -169,7 +154,7 @@ export function MessageItem({ message, chatId, sentMediaCache, onReply }: Messag
               </div>
             </div>
             <button
-              onClick={handleImageDownload}
+              onClick={() => DownloadMedia(chatId, message.Info.ID)}
               className="p-2 border border-gray-300 dark:border-gray-600 rounded-full"
             >
               <svg
@@ -199,57 +184,48 @@ export function MessageItem({ message, chatId, sentMediaCache, onReply }: Messag
   }
 
   return (
-    <>
-      {showImagePreview && (
-        <ImagePreview
-          src={previewImageSrc}
-          onClose={() => setShowImagePreview(false)}
+    <div className={clsx("flex mb-2 group", isFromMe ? "justify-end" : "justify-start")}>
+      <div
+        className={clsx("max-w-[75%] rounded-lg p-2 shadow-sm relative", {
+          "bg-transparent shadow-none": isSticker,
+
+          // SENT
+          "bg-sent-bubble-bg dark:bg-sent-bubble-dark-bg text-(--color-sent-bubble-text) dark:text-(--color-sent-bubble-dark-text)":
+            isFromMe && !isSticker,
+
+          // RECEIVED
+          "bg-received-bubble-bg dark:bg-received-bubble-dark-bg text-(--color-received-bubble-text) dark:text-(--color-received-bubble-dark-text)":
+            !isFromMe && !isSticker,
+        })}
+      >
+        {/* Message Menu - positioned at top right corner */}
+        <MessageMenu
           messageId={message.Info.ID}
+          isFromMe={isFromMe}
+          onReply={handleReply}
+          onReplyPrivately={!isFromMe ? handleReplyPrivately : undefined}
+          onMessage={!isFromMe ? handleMessage : undefined}
+          onCopy={handleCopy}
+          onReact={handleReact}
+          onForward={handleForward}
+          onStar={handleStar}
+          onReport={!isFromMe ? handleReport : undefined}
+          onDelete={handleDelete}
         />
-      )}
-      <div className={clsx("flex mb-2 group", isFromMe ? "justify-end" : "justify-start")}>
-        <div
-          className={clsx("max-w-[75%] rounded-lg p-2 shadow-sm relative", {
-            "bg-transparent shadow-none": isSticker,
 
-            // SENT
-            "bg-sent-bubble-bg dark:bg-sent-bubble-dark-bg text-(--color-sent-bubble-text) dark:text-(--color-sent-bubble-dark-text)":
-              isFromMe && !isSticker,
-
-            // RECEIVED
-            "bg-received-bubble-bg dark:bg-received-bubble-dark-bg text-(--color-received-bubble-text) dark:text-(--color-received-bubble-dark-text)":
-              !isFromMe && !isSticker,
+        {!isFromMe && chatId.endsWith("@g.us") && !isSticker && (
+          <div className="text-[11px] font-semibold text-blue-500 mb-0.5">{senderName}</div>
+        )}
+        {contextInfo?.quotedMessage && <QuotedMessage contextInfo={contextInfo} />}
+        <div className="text-sm wrap-break-word whitespace-pre-wrap">{renderContent()}</div>
+        <div className="text-[10px] text-right opacity-50 mt-1">
+          {new Date(message.Info.Timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
           })}
-        >
-          {/* Message Menu - positioned at top right corner */}
-          <MessageMenu
-            messageId={message.Info.ID}
-            isFromMe={isFromMe}
-            onReply={handleReply}
-            onReplyPrivately={!isFromMe ? handleReplyPrivately : undefined}
-            onMessage={!isFromMe ? handleMessage : undefined}
-            onCopy={handleCopy}
-            onReact={handleReact}
-            onForward={handleForward}
-            onStar={handleStar}
-            onReport={!isFromMe ? handleReport : undefined}
-            onDelete={handleDelete}
-          />
-
-          {!isFromMe && chatId.endsWith("@g.us") && !isSticker && (
-            <div className="text-[11px] font-semibold text-blue-500 mb-0.5">{senderName}</div>
-          )}
-          {contextInfo?.quotedMessage && <QuotedMessage contextInfo={contextInfo} />}
-          <div className="text-sm wrap-break-word whitespace-pre-wrap">{renderContent()}</div>
-          <div className="text-[10px] text-right opacity-50 mt-1">
-            {new Date(message.Info.Timestamp).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

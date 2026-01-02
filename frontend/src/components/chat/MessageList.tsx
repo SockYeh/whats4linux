@@ -12,7 +12,6 @@ interface MessageListProps {
   onPrefetch?: () => void
   onTrimOldMessages?: () => void
   onRangeChanged?: (range: { startIndex: number; endIndex: number }) => void
-  onAtBottomChange?: (atBottom: boolean) => void
   firstItemIndex: number
   isLoading?: boolean
   hasMore?: boolean
@@ -34,7 +33,6 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     onPrefetch,
     onTrimOldMessages,
     onRangeChanged,
-    onAtBottomChange,
     firstItemIndex,
     isLoading,
     hasMore,
@@ -90,7 +88,6 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       followOutput="smooth"
       alignToBottom
       rangeChanged={onRangeChanged}
-      atBottomStateChange={onAtBottomChange}
       increaseViewportBy={{ top: 300, bottom: 0 }}
       className="flex-1 overflow-y-auto bg-repeat virtuoso-scroller"
       style={{ backgroundImage: "url('/assets/images/bg-chat-tile-dark.png')" }}

@@ -7,9 +7,6 @@ import { MessageList, type MessageListHandle } from "../components/chat/MessageL
 import { ChatHeader } from "../components/chat/ChatHeader"
 import { ChatInput } from "../components/chat/ChatInput"
 import clsx from "clsx"
-import gsap from "gsap"
-import { useGSAP } from "@gsap/react"
-import { getEase } from "../store/useEaseStore"
 
 interface ChatDetailProps {
   chatId: string
@@ -39,33 +36,19 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
   const [isReady, setIsReady] = useState(false)
-  const [isAtBottom, setIsAtBottom] = useState(true)
 
   const messageListRef = useRef<MessageListHandle>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   const emojiButtonRef = useRef<HTMLButtonElement>(null)
-  const scrollButtonRef = useRef<HTMLButtonElement>(null)
   const sentMediaCache = useRef<Map<string, string>>(new Map())
   const isComposingRef = useRef(false)
-
-  const easeShowRef = useRef(getEase("DropDown", "open"))
-  const easeHideRef = useRef(getEase("DropDown", "close"))
-
-  useEffect(() => {
-    easeShowRef.current = getEase("DropDown", "open")
-    easeHideRef.current = getEase("DropDown", "close")
-  })
 
   const scrollToBottom = useCallback((instant = false) => {
     requestAnimationFrame(() => {
       messageListRef.current?.scrollToBottom(instant ? "auto" : "smooth")
     })
-  }, [])
-
-  const handleAtBottomChange = useCallback((atBottom: boolean) => {
-    setIsAtBottom(atBottom)
   }, [])
 
   const loadInitialMessages = useCallback(async () => {
@@ -85,6 +68,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         scrollToBottom(true)
       })
     } catch (err) {
+      console.error("Initial load failed:", err)
       setInitialLoad(false)
     }
   }, [chatId, setMessages, scrollToBottom])
@@ -109,6 +93,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         setHasMore(false)
       }
     } catch (err) {
+      console.error("Load more failed:", err)
     } finally {
       setIsLoadingMore(false)
     }
@@ -170,7 +155,9 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
       } else {
         await SendMessage(chatId, { type: "text", text: textToSend, quotedMessageId })
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error("Failed to send:", err)
+    }
   }
 
   useEffect(() => {
@@ -191,25 +178,6 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
 
     return () => unsub()
   }, [chatId, updateMessage, scrollToBottom])
-
-  useGSAP(() => {
-    if (!scrollButtonRef.current) return
-
-    if (isAtBottom) {
-      gsap.to(scrollButtonRef.current, {
-        opacity: 0,
-        duration: 0.3,
-        ease: easeHideRef.current,
-      })
-    } else {
-      gsap.to(scrollButtonRef.current, {
-        opacity: 1,
-        duration: 0.3,
-        ease: easeShowRef.current,
-      })
-    }
-  }, [isAtBottom])
-
   return (
     <div className="flex flex-col h-full bg-[#efeae2] dark:bg-[#0b141a]">
       <ChatHeader chatName={chatName} chatAvatar={chatAvatar} onBack={onBack} />
@@ -222,9 +190,8 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         )}
 
         <button
-          ref={scrollButtonRef}
           onClick={() => scrollToBottom(false)}
-          className="absolute bottom-4 right-8 bg-white dark:bg-received-bubble-dark-bg p-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 z-100 hover:bg-gray-100 dark:hover:bg-[#2a3942]"
+          className="absolute bottom-4 right-8 bg-white dark:bg-received-bubble-dark-bg p-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 z-100 hover:bg-gray-100 dark:hover:bg-[#2a3942] transition-all"
         >
           <svg
             viewBox="0 0 24 24"
@@ -244,7 +211,6 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
             sentMediaCache={sentMediaCache}
             onReply={setReplyingTo}
             onLoadMore={loadMoreMessages}
-            onAtBottomChange={handleAtBottomChange}
             firstItemIndex={firstItemIndex}
             isLoading={isLoadingMore}
             hasMore={hasMore}

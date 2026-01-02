@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/gen2brain/beeep"
-	"github.com/lugvitc/whats4linux/internal/cache"
+
 	"github.com/lugvitc/whats4linux/internal/misc"
 	"github.com/lugvitc/whats4linux/internal/settings"
 	"github.com/lugvitc/whats4linux/internal/store"
@@ -52,7 +52,6 @@ type Api struct {
 	cw           *wa.AppDatabase
 	waClient     *whatsmeow.Client
 	messageStore *store.MessageStore
-	imageCache   *cache.ImageCache
 }
 
 // NewApi creates a new Api application struct
@@ -84,10 +83,6 @@ func (a *Api) Startup(ctx context.Context) {
 	if err != nil {
 		panic(err)
 	}
-	a.imageCache, err = cache.NewImageCache()
-	if err != nil {
-		panic(err)
-	}
 }
 
 func (a *Api) Login() error {
@@ -108,6 +103,7 @@ func (a *Api) Login() error {
 		}
 	} else {
 		runtime.EventsEmit(a.ctx, "wa:status", "logged_in")
+		fmt.Println("Already logged in, connecting...")
 		// Already logged in, just connect
 		err = a.waClient.Connect()
 		if err != nil {
@@ -205,34 +201,17 @@ func (a *Api) DownloadMedia(chatJID string, messageID string) (string, error) {
 
 	var data []byte
 	var downloadErr error
-	var mime string
-	var width, height int
 
 	if msg.Content.ImageMessage != nil {
 		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.ImageMessage)
-		mime = msg.Content.ImageMessage.GetMimetype()
-		if mime == "" {
-			mime = "image/jpeg"
-		}
-		width = int(msg.Content.ImageMessage.GetWidth())
-		height = int(msg.Content.ImageMessage.GetHeight())
 	} else if msg.Content.VideoMessage != nil {
 		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.VideoMessage)
-		mime = msg.Content.VideoMessage.GetMimetype()
 	} else if msg.Content.AudioMessage != nil {
 		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.AudioMessage)
-		mime = msg.Content.AudioMessage.GetMimetype()
 	} else if msg.Content.DocumentMessage != nil {
 		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.DocumentMessage)
-		mime = msg.Content.DocumentMessage.GetMimetype()
 	} else if msg.Content.StickerMessage != nil {
 		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.StickerMessage)
-		mime = msg.Content.StickerMessage.GetMimetype()
-		if mime == "" {
-			mime = "image/webp"
-		}
-		width = int(msg.Content.StickerMessage.GetWidth())
-		height = int(msg.Content.StickerMessage.GetHeight())
 	} else {
 		return "", fmt.Errorf("no media content found")
 	}
@@ -241,12 +220,69 @@ func (a *Api) DownloadMedia(chatJID string, messageID string) (string, error) {
 		return "", downloadErr
 	}
 
-	// Save to cache for images and stickers
-	if msg.Content.ImageMessage != nil || msg.Content.StickerMessage != nil {
-		_, err = a.imageCache.SaveImage(messageID, data, mime, width, height)
+	// Save to Downloads if image, video, document or audio
+	if msg.Content.ImageMessage != nil || msg.Content.VideoMessage != nil || msg.Content.DocumentMessage != nil || msg.Content.AudioMessage != nil {
+		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			// Log error but continue
+			return "", fmt.Errorf("failed to get home directory: %v", err)
 		}
+		downloadsDir := filepath.Join(homeDir, "Downloads")
+
+		var fileName string
+		if msg.Content.ImageMessage != nil {
+			fileName = messageID + ".jpg" // Default to jpg
+		} else if msg.Content.VideoMessage != nil {
+			fileName = messageID + ".mp4" // Default to mp4
+		} else if msg.Content.AudioMessage != nil {
+			fileName = messageID + ".ogg" // Default to ogg
+		} else if msg.Content.DocumentMessage != nil {
+			if msg.Content.DocumentMessage.FileName != nil && *msg.Content.DocumentMessage.FileName != "" {
+				fileName = *msg.Content.DocumentMessage.FileName
+			} else {
+				fileName = messageID + ".bin"
+			}
+		}
+
+		filePath := filepath.Join(downloadsDir, fileName)
+
+		// Check if file exists
+		if _, err := os.Stat(filePath); err == nil {
+			// File exists, prompt user to save as
+			newPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+				DefaultDirectory: downloadsDir,
+				DefaultFilename:  fileName,
+				Title:            "File already exists. Save as...",
+				Filters: []runtime.FileFilter{
+					{
+						DisplayName: "Media Files",
+						Pattern:     "*" + filepath.Ext(fileName),
+					},
+				},
+			})
+			if err != nil {
+				return "", err
+			}
+			if newPath == "" {
+				return "", fmt.Errorf("download cancelled")
+			}
+			filePath = newPath
+			fileName = filepath.Base(filePath)
+		}
+
+		if err := os.WriteFile(filePath, data, 0644); err != nil {
+			return "", fmt.Errorf("failed to save file: %v", err)
+		}
+
+		// Send desktop notification with beeep
+		beeep.Notify("whats4linux", fmt.Sprintf("Downloaded: %s", filePath), "")
+		go func() {
+			if _, err := exec.LookPath("mpg123"); err == nil {
+				exec.Command("mpg123", "./beep.mp3").Run()
+			}
+		}()
+
+		// Emit event for frontend listeners as well
+		runtime.EventsEmit(a.ctx, "download:complete", fileName)
 	}
 
 	return base64.StdEncoding.EncodeToString(data), nil
@@ -589,46 +625,6 @@ func (a *Api) mainEventHandler(evt any) {
 	switch v := evt.(type) {
 	case *events.Message:
 		a.messageStore.ProcessMessageEvent(v)
-
-		// Automatically cache images and stickers when they arrive
-		go func() {
-			if v.Message.GetImageMessage() != nil || v.Message.GetStickerMessage() != nil {
-				var data []byte
-				var err error
-				var mime string
-				var width, height int
-
-				if v.Message.GetImageMessage() != nil {
-					data, err = a.waClient.Download(a.ctx, v.Message.GetImageMessage())
-					if err == nil {
-						mime = v.Message.GetImageMessage().GetMimetype()
-						if mime == "" {
-							mime = "image/jpeg"
-						}
-						width = int(v.Message.GetImageMessage().GetWidth())
-						height = int(v.Message.GetImageMessage().GetHeight())
-					}
-				} else if v.Message.GetStickerMessage() != nil {
-					data, err = a.waClient.Download(a.ctx, v.Message.GetStickerMessage())
-					if err == nil {
-						mime = v.Message.GetStickerMessage().GetMimetype()
-						if mime == "" {
-							mime = "image/webp"
-						}
-						width = int(v.Message.GetStickerMessage().GetWidth())
-						height = int(v.Message.GetStickerMessage().GetHeight())
-					}
-				}
-
-				if err == nil && data != nil {
-					_, cacheErr := a.imageCache.SaveImage(v.Info.ID, data, mime, width, height)
-					if cacheErr != nil {
-					} else {
-					}
-				}
-			}
-		}()
-
 		// Emit the message data directly so frontend doesn't need to make an API call
 		msg := store.Message{
 			Info:    v.Info,
@@ -687,133 +683,4 @@ func (a *Api) SaveSettings(s map[string]any) {
 
 func (a *Api) GetSettings() map[string]any {
 	return store.GetSettings()
-}
-
-// downloadMedia downloads media from a message and returns data, mime, width, height
-func (a *Api) downloadMedia(msg *store.Message) ([]byte, string, int, int, error) {
-	var data []byte
-	var err error
-	var mime string
-	var width, height int
-
-	if msg.Content.ImageMessage != nil {
-		data, err = a.waClient.Download(a.ctx, msg.Content.ImageMessage)
-		mime = msg.Content.ImageMessage.GetMimetype()
-		if mime == "" {
-			mime = "image/jpeg"
-		}
-		width = int(msg.Content.ImageMessage.GetWidth())
-		height = int(msg.Content.ImageMessage.GetHeight())
-	} else if msg.Content.StickerMessage != nil {
-		data, err = a.waClient.Download(a.ctx, msg.Content.StickerMessage)
-		mime = msg.Content.StickerMessage.GetMimetype()
-		if mime == "" {
-			mime = "image/webp"
-		}
-		width = int(msg.Content.StickerMessage.GetWidth())
-		height = int(msg.Content.StickerMessage.GetHeight())
-	} else {
-		return nil, "", 0, 0, fmt.Errorf("message is not an image or sticker")
-	}
-
-	return data, mime, width, height, err
-}
-
-func (a *Api) GetCachedImage(messageID string) (string, error) {
-	// Try to read from cache first
-	data, mime, err := a.imageCache.ReadImageByMessageID(messageID)
-	if err == nil {
-		return fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(data)), nil
-	}
-
-	// Image not in cache, download and cache it
-	msg := a.messageStore.GetMessageByID(messageID)
-	if msg == nil {
-		return "", fmt.Errorf("message not found")
-	}
-
-	data, mime, width, height, err := a.downloadMedia(msg)
-	if err != nil {
-		return "", fmt.Errorf("failed to download image: %w", err)
-	}
-
-	_, err = a.imageCache.SaveImage(messageID, data, mime, width, height)
-	if err != nil {
-		// Don't fail, still return the data
-	}
-
-	return fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(data)), nil
-}
-
-// GetCachedImages retrieves multiple cached images by message IDs (batch operation)
-// Returns map of message IDs to data URLs
-func (a *Api) GetCachedImages(messageIDs []string) (map[string]string, error) {
-	result := make(map[string]string)
-	metas, err := a.imageCache.GetImagesByMessageIDs(messageIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	for msgID, meta := range metas {
-		if meta != nil {
-			data, mime, err := a.imageCache.ReadImageByMessageID(msgID)
-			if err == nil {
-				result[msgID] = fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(data))
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// getFileExtension returns file extension for mime type
-func getFileExtension(mime string) string {
-	switch mime {
-	case "image/png":
-		return ".png"
-	case "image/gif":
-		return ".gif"
-	case "image/webp":
-		return ".webp"
-	case "image/jpeg", "image/jpg":
-		return ".jpg"
-	default:
-		return ".jpg"
-	}
-}
-
-// DownloadImageToFile downloads an image from cache to the Downloads folder
-func (a *Api) DownloadImageToFile(messageID string) error {
-	data, mime, err := a.imageCache.ReadImageByMessageID(messageID)
-	if err != nil {
-		return err
-	}
-
-	downloadsDir := filepath.Join(os.Getenv("HOME"), "Downloads")
-	fileName := messageID + getFileExtension(mime)
-	filePath := filepath.Join(downloadsDir, fileName)
-
-	// Check if file exists and prompt for new path
-	if _, err := os.Stat(filePath); err == nil {
-		if filePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-			DefaultDirectory: downloadsDir,
-			DefaultFilename:  fileName,
-			Title:            "File already exists. Save as...",
-			Filters:          []runtime.FileFilter{{DisplayName: "Image Files", Pattern: "*" + getFileExtension(mime)}},
-		}); err != nil || filePath == "" {
-			return err
-		}
-	}
-
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
-		return err
-	}
-
-	beeep.Notify("whats4linux", "Downloaded: "+filePath, "")
-	go func() {
-		if _, err := exec.LookPath("mpg123"); err == nil {
-			exec.Command("mpg123", "./beep.mp3").Run()
-		}
-	}()
-	return nil
 }

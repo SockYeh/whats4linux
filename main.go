@@ -10,48 +10,10 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
-
-type FileLoader struct {
-	http.Handler
-}
-
-func NewFileLoader() *FileLoader {
-	return &FileLoader{}
-}
-
-func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	if strings.HasPrefix(req.URL.Path, "/cached-image/") {
-		requestedFilename := strings.TrimPrefix(req.URL.Path, "/cached-image/")
-
-		// Security: Prevent directory traversal
-		// We only expect flat filenames (hashes + extension)
-		if filepath.Base(requestedFilename) != requestedFilename {
-			res.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		homeDir, _ := os.UserHomeDir()
-		fullPath := filepath.Join(homeDir, ".cache", "whats4linux", "images", requestedFilename)
-
-		// Check if file exists
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			res.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		http.ServeFile(res, req, fullPath)
-		return
-	}
-	res.WriteHeader(http.StatusNotFound)
-}
 
 func main() {
 	lock := lockfile.EnsureSingleInstance(misc.APP_LOCK_FILE)
@@ -69,8 +31,7 @@ func main() {
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{
-			Assets:  assets,
-			Handler: NewFileLoader(),
+			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        api.Startup,
@@ -80,6 +41,6 @@ func main() {
 	})
 
 	if err != nil {
-		// Handle error silently or log appropriately
+		println("Error:", err.Error())
 	}
 }
