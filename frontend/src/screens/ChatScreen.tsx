@@ -141,7 +141,14 @@ const ChatListItem = ({ chat, isSelected, onSelect }: ChatListItemProps) => (
     <div className="flex-1 min-w-0">
       <div className="flex justify-between items-baseline mb-1">
         <h3 className="text-light-text dark:text-dark-text font-medium truncate">{chat.name}</h3>
-        <span className="text-xs text-gray-500 dark:text-gray-400">{((chat.timestamp) ? (new Date(chat.timestamp * 1000)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "yesterday")}</span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          {chat.timestamp
+            ? new Date(chat.timestamp * 1000).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "yesterday"}
+        </span>
       </div>
       <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{chat.subtitle}</p>
     </div>
