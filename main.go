@@ -3,6 +3,11 @@ package main
 import (
 	"embed"
 
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
 	apiPkg "github.com/lugvitc/whats4linux/api"
 	"github.com/lugvitc/whats4linux/internal/misc"
 	"github.com/lugvitc/whats4linux/internal/store"
@@ -10,10 +15,6 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 )
 
 //go:embed all:frontend/dist
@@ -80,6 +81,7 @@ func main() {
 	})
 
 	if err != nil {
-		// Handle error silently or log appropriately
+		println("Error:", err.Error())
+
 	}
 }
