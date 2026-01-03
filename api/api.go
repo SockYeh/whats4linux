@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -27,6 +28,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 )
 
 type Contact struct {
@@ -361,10 +363,32 @@ func (a *Api) buildQuotedContext(chatJID types.JID, quotedMessageID string) (*wa
 		return nil, fmt.Errorf("quoted message not found")
 	}
 
+	clonedQuotedMsg := proto.Clone(quotedMsg.Content).(*waE2E.Message)
+	switch {
+	case clonedQuotedMsg.ExtendedTextMessage != nil:
+		clonedQuotedMsg.ExtendedTextMessage.ContextInfo = nil
+	case clonedQuotedMsg.ImageMessage != nil:
+		clonedQuotedMsg.ImageMessage.ContextInfo = nil
+	case clonedQuotedMsg.StickerMessage != nil:
+		clonedQuotedMsg.StickerMessage.ContextInfo = nil
+	case clonedQuotedMsg.VideoMessage != nil:
+		clonedQuotedMsg.VideoMessage.ContextInfo = nil
+	case clonedQuotedMsg.AudioMessage != nil:
+		clonedQuotedMsg.AudioMessage.ContextInfo = nil
+	case clonedQuotedMsg.DocumentMessage != nil:
+		clonedQuotedMsg.DocumentMessage.ContextInfo = nil
+	case clonedQuotedMsg.LocationMessage != nil:
+		clonedQuotedMsg.LocationMessage.ContextInfo = nil
+	case clonedQuotedMsg.ContactMessage != nil:
+		clonedQuotedMsg.ContactMessage.ContextInfo = nil
+	default:
+	}
+	clonedQuotedMsg.MessageContextInfo = nil
+
 	stanzaID := quotedMsg.Info.ID
 	contextInfo := &waE2E.ContextInfo{
 		StanzaID:      &stanzaID,
-		QuotedMessage: quotedMsg.Content,
+		QuotedMessage: clonedQuotedMsg,
 	}
 
 	if quotedMsg.Info.Sender.User != "" {
@@ -374,6 +398,7 @@ func (a *Api) buildQuotedContext(chatJID types.JID, quotedMessageID string) (*wa
 
 	return contextInfo, nil
 }
+
 func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error) {
 	if a.waClient.Store.ID == nil {
 		return "", fmt.Errorf("client not logged in")
@@ -621,6 +646,9 @@ func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error
 func (a *Api) mainEventHandler(evt any) {
 	switch v := evt.(type) {
 	case *events.Message:
+		buf, _ := json.Marshal(v)
+		fmt.Println("[Event] Message:", string(buf))
+
 		a.messageStore.ProcessMessageEvent(v)
 
 		// Automatically cache images and stickers when they arrive
