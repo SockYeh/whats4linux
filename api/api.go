@@ -43,6 +43,7 @@ type Contact struct {
 type ChatElement struct {
 	LatestMessage string `json:"latest_message"`
 	LatestTS      int64
+	Sender        string
 	Contact
 }
 
@@ -299,6 +300,7 @@ func (a *Api) GetChatList() ([]ChatElement, error) {
 		ce[i] = ChatElement{
 			LatestMessage: cm.MessageText,
 			LatestTS:      cm.MessageTime,
+			Sender:        cm.Sender,
 			Contact:       fc,
 		}
 	}
@@ -638,6 +640,7 @@ func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error
 		"message":     msg,
 		"messageText": messageText,
 		"timestamp":   resp.Timestamp.Unix(),
+		"sender":      "You",
 	})
 
 	return resp.ID, nil
@@ -703,6 +706,7 @@ func (a *Api) mainEventHandler(evt any) {
 			"message":     msg,
 			"messageText": messageText,
 			"timestamp":   v.Info.Timestamp.Unix(),
+			"sender":      v.Info.PushName,
 		})
 
 	case *events.Picture:

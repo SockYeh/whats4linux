@@ -6,6 +6,7 @@ export interface ChatItem {
   timestamp?: number
   avatar?: string
   unreadCount?: number
+  sender?: string
 }
 
 export interface Message {

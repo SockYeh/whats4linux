@@ -163,7 +163,9 @@ const ChatListItemContent = memo(({ chat, isSelected, onSelect }: ChatListItemCo
             : "yesterday"}
         </span>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{chat.subtitle}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+        {chat.sender && (chat.type === "group") ? `${chat.sender}: ${chat.subtitle}` : chat.subtitle}
+      </p>
     </div>
   </div>
 ))
@@ -274,6 +276,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
         type: isGroup ? "group" : "contact",
         timestamp: c.LatestTS,
         avatar: avatar,
+        sender: c.Sender || "",
       }
     })
   }, [])
@@ -341,7 +344,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
     // Listen for new messages - update only the specific chat
     const unsubNewMessage = EventsOn(
       "wa:new_message",
-      (data: { chatId: string; messageText: string; timestamp: number }) => {
+      (data: { chatId: string; messageText: string; timestamp: number; sender: string }) => {
         if (!initialFetchDoneRef.current) {
           // If we haven't done initial fetch, do a full fetch
           setTimeout(fetchChats, 500)
@@ -352,7 +355,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
         const existingChat = getChat(data.chatId)
         if (existingChat) {
           // Update only this specific chat - no full re-fetch needed!
-          updateChatLastMessage(data.chatId, data.messageText, data.timestamp)
+          updateChatLastMessage(data.chatId, data.messageText, data.timestamp, data.sender)
         } else {
           // New chat we don't have - need to fetch to get avatar/name
           setTimeout(fetchChats, 500)

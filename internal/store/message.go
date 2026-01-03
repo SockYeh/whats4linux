@@ -97,10 +97,20 @@ func (ms *MessageStore) ProcessMessageEvent(msg *events.Message) {
 
 	// Update chatListMap with the new latest message
 	messageText := ExtractMessageText(m.Content)
+	sender := msg.Info.PushName
+	if sender == "" && msg.Info.Sender.User != "" {
+		sender = msg.Info.Sender.User
+	}
+
+	if msg.Info.IsFromMe {
+		sender = "You"
+	}
+
 	chatMsg := ChatMessage{
 		JID:         msg.Info.Chat,
 		MessageText: messageText,
 		MessageTime: msg.Info.Timestamp.Unix(),
+		Sender:      sender,
 	}
 	ms.chatListMap.Set(chat, chatMsg)
 
@@ -242,6 +252,7 @@ type ChatMessage struct {
 	JID         types.JID
 	MessageText string
 	MessageTime int64
+	Sender      string
 }
 
 func (ms *MessageStore) GetChatList() []ChatMessage {

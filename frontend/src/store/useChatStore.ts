@@ -11,12 +11,13 @@ interface ChatStore {
   selectedChatId: string | null
   selectedChatName: string
   selectedChatAvatar?: string
+  selectedChatSender?: string
   searchTerm: string
   // Actions
   setChats: (chats: ChatItem[]) => void
   selectChat: (chat: ChatItem | null) => void
   setSearchTerm: (term: string) => void
-  updateChatLastMessage: (chatId: string, message: string, timestamp?: number) => void
+  updateChatLastMessage: (chatId: string, message: string, timestamp?: number, sender?: string) => void
   updateSingleChat: (chatId: string, updates: Partial<ChatItem>) => void
   incrementUnreadCount: (chatId: string) => void
   clearUnreadCount: (chatId: string) => void
@@ -29,6 +30,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   selectedChatId: null,
   selectedChatName: "",
   selectedChatAvatar: undefined,
+  selectedChatSender: undefined,
   searchTerm: "",
 
   setChats: chats => {
@@ -48,6 +50,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       selectedChatId: chat?.id || null,
       selectedChatName: chat?.name || "",
       selectedChatAvatar: chat?.avatar,
+      selectedChatSender: chat?.sender
     }),
 
   setSearchTerm: term => set({ searchTerm: term }),
@@ -64,7 +67,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return { chatsById: newChatsById }
     }),
 
-  updateChatLastMessage: (chatId, message, timestamp) =>
+  updateChatLastMessage: (chatId, message, timestamp, sender) =>
     set(state => {
       const existingChat = state.chatsById.get(chatId)
       if (!existingChat) return state
@@ -74,6 +77,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ...existingChat,
         subtitle: message,
         timestamp: timestamp || Date.now(),
+        sender: sender || existingChat.sender,
       })
 
       // Move this chat to the top of the list
