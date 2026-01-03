@@ -722,7 +722,7 @@ func (a *Api) mainEventHandler(evt any) {
 		a.waClient.SendPresence(a.ctx, types.PresenceAvailable)
 	case *events.Disconnected:
 		a.waClient.SendPresence(a.ctx, types.PresenceUnavailable)
-	
+
 	default:
 		// Ignore other events for now
 	}
@@ -913,7 +913,7 @@ func (a *Api) GetCachedAvatar(jid string, recache bool) (string, error) {
 
 	// Return data URL like message images do
 	avatarDataURL := fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(data))
-	
+
 	return avatarDataURL, nil
 }
 
