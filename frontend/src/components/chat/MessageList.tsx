@@ -52,21 +52,17 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     }
   }, [])
 
-  const scrollToMessage = useCallback(
-    (messageId: string) => {
-      const el = containerRef.current
-      if (!el) return
+  const scrollToMessage = useCallback((messageId: string) => {
+    const el = containerRef.current
+    if (!el) return
 
-      const messageElement = el.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement
-      if (messageElement) {
-        messageElement.scrollIntoView({ behavior: "smooth", block: "center" })
-      }
-    },
-    [],
-  )
+    const messageElement = el.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  }, [])
 
   useImperativeHandle(ref, () => ({ scrollToBottom, scrollToMessage }))
-
 
   useEffect(() => {
     // Scroll to bottom on mount
@@ -112,7 +108,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           <div className="animate-spin h-5 w-5 border-2 border-green-500 rounded-full border-t-transparent" />
         ) : null}
       </div>
-      {messages.map((msg) => (
+      {messages.map(msg => (
         <div key={msg.Info.ID} data-message-id={msg.Info.ID} className="px-4 py-1">
           <MemoizedMessageItem
             message={msg}
