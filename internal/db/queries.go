@@ -125,6 +125,11 @@ const (
 	VALUES (?, ?, ?, ?, ?, ?)
 	`
 
+	DeleteImageIndex = `
+	DELETE FROM image_index
+	WHERE message_id = ?
+	`
+
 	GetImageByID = `
 	SELECT message_id, sha256, mime, width, height, created_at
 	FROM image_index

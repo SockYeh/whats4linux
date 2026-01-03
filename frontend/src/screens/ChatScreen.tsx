@@ -283,8 +283,8 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
       for (const chat of chatItems) {
         if (chat.avatar) continue // Already has avatar
         try {
-          const avatarURL = await GetCachedAvatar(chat.id)
-          if (avatarURL && mountedRef.current) {
+          const avatarURL = await GetCachedAvatar(chat.id, false)
+          if (mountedRef.current) {
             updateSingleChat(chat.id, { avatar: avatarURL })
           }
         } catch (err) {
@@ -360,6 +360,25 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
       },
     )
 
+    const unsubPictureUpdate = EventsOn("wa:picture_update", async (jid: string) => {
+      if (!jid) return
+
+      try {
+        const avatarURL = await GetCachedAvatar(jid, true)
+
+        updateSingleChat(jid, { avatar: avatarURL })
+
+        if (selectedChatId === jid) {
+          const existing = getChat(jid)
+          if (existing) {
+            selectChat({ ...existing, avatar: avatarURL })
+          }
+        }
+      } catch (err) {
+        console.error("Error updating avatar for", jid, err)
+      }
+    })
+
     // Fallback: listen for generic updates that require full refresh
     const unsubRefresh = EventsOn("wa:chat_list_refresh", () => {
       setTimeout(fetchChats, 500)
@@ -369,9 +388,10 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
       mountedRef.current = false
       clearTimeout(timeout)
       unsubNewMessage()
+      unsubPictureUpdate()
       unsubRefresh()
     }
-  }, [fetchChats, getChat, updateChatLastMessage])
+  }, [fetchChats, getChat, updateChatLastMessage, updateSingleChat, selectedChatId, selectChat])
 
   return (
     <div className="flex h-screen bg-light-secondary dark:bg-black overflow-hidden">

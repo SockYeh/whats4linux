@@ -206,6 +206,30 @@ func (ic *ImageCache) SaveAvatar(jid string, data []byte, mime string) (string, 
 	return ic.SaveImage(avatarKey, data, mime, 0, 0)
 }
 
+// DeleteAvatar deletes an avatar image from cache by JID
+func (ic *ImageCache) DeleteAvatar(jid string) error {
+	filename, err := (ic.GetAvatarFilePath(jid))
+	if filename == "" {
+		return nil
+	}
+	filep := filepath.Join(ic.imagesDir, filename)
+	fmt.Printf("Deleting avatar file: %s \n", filename)
+
+	if err == nil && filep != "" {
+		if errRemove := os.Remove(filep); errRemove != nil && !os.IsNotExist(errRemove) {
+			return fmt.Errorf("failed to delete avatar file: %v", errRemove)
+		}
+	}
+
+	avatarKey := "avatar_" + jid
+	_, err = ic.db.Exec(query.DeleteImageIndex, avatarKey)
+	if err != nil {
+		return fmt.Errorf("failed to delete avatar index: %v", err)
+	}
+
+	return nil
+}
+
 // GetAvatarFilePath returns the file path for a cached avatar by JID
 func (ic *ImageCache) GetAvatarFilePath(jid string) (string, error) {
 	avatarKey := "avatar_" + jid
