@@ -121,8 +121,7 @@ export function MessageItem({
   const renderContent = () => {
     if (!content) return <span className="italic opacity-50">Empty Message</span>
     else if (content.conversation) return <>{content.conversation}</>
-    else if (content.extendedTextMessage?.text)
-      return <>{content.extendedTextMessage.text}</>
+    else if (content.extendedTextMessage?.text) return <>{content.extendedTextMessage.text}</>
     else if (content.imageMessage)
       return (
         <div className="flex flex-col">

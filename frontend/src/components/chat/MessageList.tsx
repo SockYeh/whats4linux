@@ -70,20 +70,17 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     [chatId, onReply, onQuotedClick, sentMediaCache, highlightedMessageId],
   )
 
-  const scrollToBottom = useCallback(
-    (behavior: "auto" | "smooth" = "smooth") => {
-      const el = containerRef.current
-      if (el) {
-        const top = el.scrollHeight - el.clientHeight
-        try {
-          el.scrollTo({ top, behavior })
-        } catch {
-          el.scrollTop = top
-        }
+  const scrollToBottom = useCallback((behavior: "auto" | "smooth" = "smooth") => {
+    const el = containerRef.current
+    if (el) {
+      const top = el.scrollHeight - el.clientHeight
+      try {
+        el.scrollTo({ top, behavior })
+      } catch {
+        el.scrollTop = top
       }
-    },
-    [],
-  )
+    }
+  }, [])
 
   const scrollToMessage = useCallback(
     (messageId: string) => {
