@@ -26,7 +26,7 @@ const formatSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i]
 }
 
-function MessageItemComponent({
+export function MessageItem({
   message,
   chatId,
   sentMediaCache,
@@ -289,13 +289,3 @@ export const MessagePreview = () => {
     </div>
   )
 }
-
-// Memoize with custom comparison to prevent rerenders of old messages
-export const MessageItem = React.memo(MessageItemComponent, (prevProps, nextProps) => {
-  // Only rerender if the message itself changed or highlight state changed
-  return (
-    prevProps.message.Info.ID === nextProps.message.Info.ID &&
-    prevProps.highlightedMessageId === nextProps.highlightedMessageId &&
-    prevProps.message.Info.Status === nextProps.message.Info.Status
-  )
-})
