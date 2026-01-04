@@ -80,11 +80,11 @@ func main() {
 		Bind: []any{
 			api,
 		},
-        Linux: &linux.Options{
-            WindowIsTranslucent: false,
-            WebviewGpuPolicy: linux.WebviewGpuPolicyAlways,
-            ProgramName: "whats4linux",
-        },
+		Linux: &linux.Options{
+			WindowIsTranslucent: false,
+			WebviewGpuPolicy:    linux.WebviewGpuPolicyAlways,
+			ProgramName:         "whats4linux",
+		},
 	})
 
 	if err != nil {
