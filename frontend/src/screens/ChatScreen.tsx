@@ -394,7 +394,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
       unsubPictureUpdate()
       unsubRefresh()
     }
-  }, [fetchChats, getChat, updateChatLastMessage, updateSingleChat, selectedChatId, selectChat])
+  }, [fetchChats, getChat, updateChatLastMessage, updateSingleChat])
 
   return (
     <div className="flex h-screen bg-light-secondary dark:bg-black overflow-hidden">
