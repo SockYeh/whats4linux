@@ -3,19 +3,19 @@
 @theme {
   --color-dark-bg: #161717;
   --color-dark-secondary: #1a1a1a;
-  --color-dark-tertiary: #2E2F2F;
+  --color-dark-tertiary: #2e2f2f;
   --color-dark-text: #ffffff;
   --color-dark-muted: #b5bac1;
   --color-light-bg: #ffffff;
   --color-light-text: #000000;
   --color-light-primary: #00a884;
   --color-light-secondary: #f0f2f5;
-  --color-green: #1B9A58;
+  --color-green: #1b9a58;
   --color-hover-icons: #2d2e2e;
 
   /* Chat Bubble */
   --color-sent-bubble-bg: #d9fdd3;
-  --color-sent-bubble-dark-bg: #144D37;
+  --color-sent-bubble-dark-bg: #144d37;
   --color-received-bubble-bg: #ffffff;
   --color-received-bubble-dark-bg: #242626;
   --color-sent-bubble-text: #101828;
