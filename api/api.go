@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
