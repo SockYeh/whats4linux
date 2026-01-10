@@ -104,11 +104,11 @@ export function MessageMenu({
     }
 
     if (isMenuOpen) {
-      window.addEventListener('scroll', handleScroll, true)
+      window.addEventListener("scroll", handleScroll, true)
     }
 
     return () => {
-      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener("scroll", handleScroll, true)
     }
   }, [isMenuOpen])
 
@@ -141,83 +141,83 @@ export function MessageMenu({
               animation: isClosing ? "menuFadeOut 0.15s ease-in" : "menuFadeIn 0.15s ease-out",
             }}
           >
-          <button
-            onClick={() => handleMenuItemClick(onReply)}
-            className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
-          >
-            <ReplyIcon />
-            <span>Reply</span>
-          </button>
-
-          {!isFromMe && onReplyPrivately && (
             <button
-              onClick={() => handleMenuItemClick(onReplyPrivately)}
+              onClick={() => handleMenuItemClick(onReply)}
               className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
             >
-              <ReplyPrivatelyIcon />
-              <span>Reply privately</span>
+              <ReplyIcon />
+              <span>Reply</span>
             </button>
-          )}
 
-          {!isFromMe && onMessage && (
+            {!isFromMe && onReplyPrivately && (
+              <button
+                onClick={() => handleMenuItemClick(onReplyPrivately)}
+                className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
+              >
+                <ReplyPrivatelyIcon />
+                <span>Reply privately</span>
+              </button>
+            )}
+
+            {!isFromMe && onMessage && (
+              <button
+                onClick={() => handleMenuItemClick(onMessage)}
+                className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
+              >
+                <MessageIcon />
+                <span>Message</span>
+              </button>
+            )}
+
             <button
-              onClick={() => handleMenuItemClick(onMessage)}
+              onClick={() => handleMenuItemClick(onCopy)}
               className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
             >
-              <MessageIcon />
-              <span>Message</span>
+              <CopyIcon />
+              <span>Copy</span>
             </button>
-          )}
 
-          <button
-            onClick={() => handleMenuItemClick(onCopy)}
-            className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
-          >
-            <CopyIcon />
-            <span>Copy</span>
-          </button>
-
-          <button
-            onClick={() => handleMenuItemClick(onReact)}
-            className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
-          >
-            <ReactIcon />
-            <span>React</span>
-          </button>
-
-          <button
-            onClick={() => handleMenuItemClick(onForward)}
-            className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
-          >
-            <ForwardIcon />
-            <span>Forward</span>
-          </button>
-
-          <button
-            onClick={() => handleMenuItemClick(onStar)}
-            className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
-          >
-            <StarIcon />
-            <span>Star</span>
-          </button>
-
-          {!isFromMe && onReport && (
             <button
-              onClick={() => handleMenuItemClick(onReport)}
+              onClick={() => handleMenuItemClick(onReact)}
               className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
             >
-              <ReportIcon />
-              <span>Report</span>
+              <ReactIcon />
+              <span>React</span>
             </button>
-          )}
 
-          <button
-            onClick={() => handleMenuItemClick(onDelete)}
-            className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
-          >
-            <DeleteIcon />
-            <span>Delete</span>
-          </button>
+            <button
+              onClick={() => handleMenuItemClick(onForward)}
+              className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
+            >
+              <ForwardIcon />
+              <span>Forward</span>
+            </button>
+
+            <button
+              onClick={() => handleMenuItemClick(onStar)}
+              className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
+            >
+              <StarIcon />
+              <span>Star</span>
+            </button>
+
+            {!isFromMe && onReport && (
+              <button
+                onClick={() => handleMenuItemClick(onReport)}
+                className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
+              >
+                <ReportIcon />
+                <span>Report</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => handleMenuItemClick(onDelete)}
+              className="rounded-xl w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-dark-tertiary transition-colors text-gray-800 dark:text-gray-200 text-sm"
+            >
+              <DeleteIcon />
+              <span>Delete</span>
+            </button>
           </div>,
           document.body,
         )}
