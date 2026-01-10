@@ -311,9 +311,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
         }
       }
 
-      await Promise.all(
-        Array.from({ length: CONCURRENCY }, () => worker())
-      )
+      await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
     },
     [updateSingleChat],
   )
