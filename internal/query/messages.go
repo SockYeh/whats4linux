@@ -14,7 +14,7 @@ const (
 		has_media BOOLEAN DEFAULT FALSE,
 		reply_to_message_id TEXT,
 		edited BOOLEAN DEFAULT FALSE,
-		forwarded BOOLEAN DEFAULT FALSE,
+		forwarded BOOLEAN DEFAULT FALSE
 	);
 	CREATE INDEX IF NOT EXISTS idx_messages_chat_jid ON messages(chat_jid);
 	CREATE INDEX IF NOT EXISTS idx_messages_sender_jid ON messages(sender_jid);

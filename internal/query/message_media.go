@@ -12,7 +12,7 @@ const (
 		file_sha256 BLOB,
 		file_enc_sha256 BLOB,
 		width INTEGER,
-		height INTEGER
+		height INTEGER,
 		FOREIGN KEY (message_id) REFERENCES messages(message_id) ON DELETE CASCADE
 	);
 	`
@@ -20,7 +20,7 @@ const (
 	InsertMessageMedia = `
 	INSERT OR REPLACE INTO message_media
 	(message_id, type, url, mimetype, direct_path, media_key, file_sha256, file_enc_sha256, width, height)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 	`
 
 	UpdateMessageMediaByMessageID = `
