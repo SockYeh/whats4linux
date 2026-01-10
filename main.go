@@ -39,8 +39,8 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		homeDir, _ := os.UserHomeDir()
-		fullPath := filepath.Join(homeDir, ".cache", "whats4linux", "images", requestedFilename)
+		cacheDir, _ := os.UserCacheDir()
+		fullPath := filepath.Join(cacheDir, "whats4linux", "images", requestedFilename)
 
 		// Check if file exists
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
