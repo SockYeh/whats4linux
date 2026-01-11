@@ -1084,8 +1084,18 @@ func (ms *MessageStore) buildDecodedContent(msg *DecodedMessage) *DecodedMessage
 	var contextInfo *ContextInfo
 	if msg.ReplyToMessageID != "" {
 		// Fetch the quoted message, but don't recursively load its content to avoid race conditions
-		contextInfo = &ContextInfo{
-			StanzaID: msg.ReplyToMessageID,
+
+		quotedMsg, err := ms.GetDecodedMessage(msg.ChatJID, msg.ReplyToMessageID)
+		if err == nil && quotedMsg != nil {
+			contextInfo = &ContextInfo{
+				StanzaID:      msg.ReplyToMessageID,
+				Participant:   quotedMsg.SenderJID,
+				QuotedMessage: quotedMsg.Content,
+			}
+		} else {
+			contextInfo = &ContextInfo{
+				StanzaID: msg.ReplyToMessageID,
+			}
 		}
 	}
 
