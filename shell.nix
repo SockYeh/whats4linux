@@ -25,9 +25,12 @@ pkgs.mkShell {
     pkg-config-unwrapped
     gcc
     nodejs_24
+    pkgs.python3
     pkgs.makeWrapper
     pkgs.fontconfig
     pkgs.pkg-config
+    pkgs.buildGoModule
+    pkgs.buildNpmPackage
   ];
 
   buildInputs = [
@@ -71,23 +74,35 @@ pkgs.mkShell {
     done
     export LD_LIBRARY_PATH
     
+    # Set up a proper home directory for binding generation (similar to package.nix)
+    export HOME=$(mktemp -d)
+    
     # Wrap pkg-config to always use correct PKG_CONFIG_PATH
     makeWrapper $(command -v pkg-config) "$PWD/.pkg-config-wrapped" --set PKG_CONFIG_PATH "$PKG_CONFIG_PATH"
     export PATH="$PWD:$PATH"
     
     # Wrap wails to ensure PATH and PKG_CONFIG_PATH
     if command -v wails >/dev/null; then
-      makeWrapper $(command -v wails) "$PWD/.wails-wrapped" --set PKG_CONFIG_PATH "$PKG_CONFIG_PATH" --set LD_LIBRARY_PATH "$LD_LIBRARY_PATH" --set PATH "$PATH" --set LDFLAGS "$LDFLAGS"
+      makeWrapper $(command -v wails) "$PWD/.wails-wrapped" --set PKG_CONFIG_PATH "$PKG_CONFIG_PATH" --set LD_LIBRARY_PATH "$LD_LIBRARY_PATH" --set PATH "$PATH" --set LDFLAGS "$LDFLAGS" --set HOME "$HOME"
       export PATH="$PWD:$PATH"
     fi
     
     alias wails=".wails-wrapped"
     alias pkg-config=".pkg-config-wrapped"
     
+    # For building with Nix (similar to package.nix)
+    build-nix() {
+      echo "Building with Nix..."
+      nix-build -E 'with import <nixpkgs> {}; callPackage ./package.nix {}'
+    }
+    
     # echo "Development shell configured with custom webkitgtk and libsoup"
     # echo "PKG_CONFIG_PATH set to: $PKG_CONFIG_PATH"
     # echo "LD_LIBRARY_PATH set to: $LD_LIBRARY_PATH"
     # echo "LDFLAGS set to: $LDFLAGS"
-    echo -e Now you can run:$GREEN wails build -clean -tags \"webkit2_41 soup_3\"$NC
+    # echo "HOME set to: $HOME"
+    echo -e "Available commands:"
+    echo -e "  $GOAlIASES wails build:$GREEN GOFLAGS=\"-mod=vendor\" wails build -clean -tags \"webkit2_41 soup_3\"$NC"
+    echo -e "  $GOALIASES build-nix:$GREEN build-nix$NC (Nix package build)"
   '';
 }

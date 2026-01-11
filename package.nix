@@ -1,11 +1,53 @@
-{ 
-  pkgs, 
+{
+  lib,
   version ? "0.0.1",
-  webkitgtk ? pkgs.webkitgtk_4_1,
-  libsoup ? pkgs.libsoup_3,
+  makeWrapper,
+  buildGoModule,
+  buildNpmPackage,
+  pkg-config,
+  wails,
+  gtk3,
+  pango,
+  glib,
+  harfbuzz,
+  atk,
+  cairo,
+  gdk-pixbuf,
+  zlib,
+  fontconfig,
+  webkitgtk_4_1,
+  libsoup_3,
+  nodejs_24,
 }:
 
-pkgs.buildGoModule {
+let
+frontend = buildNpmPackage {
+    pname = "whats4linux-frontend";
+    inherit version;
+    
+    src = ./frontend;
+    
+    npmDepsHash = "sha256-IUzpbPrNFdhWGQL/e9gNRlhZmR6L8ZYJKdB8VRHCViY=";
+    
+    buildPhase = ''
+      runHook preBuild
+      
+      # Fix shebang lines in node_modules
+      find node_modules/.bin -type f -exec sed -i 's|#!/usr/bin/env node|#!${nodejs_24}/bin/node|g' {} \;
+      
+      npm run build
+      runHook postBuild
+    '';
+    
+    installPhase = ''
+      runHook preInstall
+      mkdir -p $out
+      cp -r dist $out/
+      runHook postInstall
+    '';
+  };
+in
+buildGoModule {
   pname = "whats4linux";
   inherit version;
   
@@ -13,66 +55,79 @@ pkgs.buildGoModule {
   
   vendorHash = "sha256-lIsdQeSsrs1d9Y2uZ9oVj6Ir/C8lMrswr8gDkCK83FU=";
   
+  proxyVendor = true;
+  
   subPackages = [ "." ];
   
   tags = [ "desktop" ];
   
   nativeBuildInputs = [
-    pkgs.makeWrapper
-    pkgs.nodejs_24
-    pkgs.pkg-config
+    makeWrapper
+    pkg-config
+    wails
+    nodejs_24
   ];
   
   buildInputs = [
-    pkgs.gtk3.dev
-    pkgs.pango.dev
-    pkgs.glib.dev
-    pkgs.harfbuzz.dev
-    pkgs.atk.dev
-    pkgs.cairo.dev
-    pkgs.gdk-pixbuf.dev
-    pkgs.zlib.dev
-    pkgs.fontconfig.dev
-    pkgs.webkitgtk_4_1.dev
-    pkgs.libsoup_3.dev
+    gtk3.dev
+    pango.dev
+    glib.dev
+    harfbuzz.dev
+    atk.dev
+    cairo.dev
+    gdk-pixbuf.dev
+    zlib.dev
+    fontconfig.dev
+    webkitgtk_4_1.dev
+    libsoup_3.dev
   ];
   
   # Build frontend first
   preBuild = ''
-    cd frontend
-    npm install
-    npm run build
-    cd ..
+    # Copy pre-built frontend
+    cp -r ${frontend}/dist frontend/
+    
+    # Ensure vendor is consistent  
+    go mod vendor
+    
+    # Set up a proper home directory for binding generation
+    export HOME=$(mktemp -d)
+    
+    # Build with Wails
+    GOFLAGS="-mod=vendor" wails build -clean -tags "webkit2_41 soup_3"
   '';
   
   postInstall = ''
     # Wrap the binary with required library paths
     wrapProgram $out/bin/whats4linux \
-      --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath [
-        pkgs.gtk3
-        pkgs.webkitgtk_4_1.dev
-        pkgs.libsoup_3.dev
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [
+        gtk3
+        webkitgtk_4_1.dev
+        libsoup_3.dev
       ]}" \
-      --prefix PKG_CONFIG_PATH : "${pkgs.lib.concatStringsSep ":" [
-        "${pkgs.gtk3.dev}/lib/pkgconfig"
-        "${pkgs.webkitgtk_4_1.dev}/lib/pkgconfig"
-        "${pkgs.pango.dev}/lib/pkgconfig"
-        "${pkgs.glib.dev}/lib/pkgconfig"
-        "${pkgs.harfbuzz.dev}/lib/pkgconfig"
-        "${pkgs.atk.dev}/lib/pkgconfig"
-        "${pkgs.cairo.dev}/lib/pkgconfig"
-        "${pkgs.gdk-pixbuf.dev}/lib/pkgconfig"
-        "${pkgs.libsoup_3.dev}/lib/pkgconfig"
-        "${pkgs.zlib.dev}/lib/pkgconfig"
-        "${pkgs.fontconfig.dev}/lib/pkgconfig"
+      --prefix PKG_CONFIG_PATH : "${lib.concatStringsSep ":" [
+        "${gtk3.dev}/lib/pkgconfig"
+        "${webkitgtk_4_1.dev}/lib/pkgconfig"
+        "${pango.dev}/lib/pkgconfig"
+        "${glib.dev}/lib/pkgconfig"
+        "${harfbuzz.dev}/lib/pkgconfig"
+        "${atk.dev}/lib/pkgconfig"
+        "${cairo.dev}/lib/pkgconfig"
+        "${gdk-pixbuf.dev}/lib/pkgconfig"
+        "${libsoup_3.dev}/lib/pkgconfig"
+        "${zlib.dev}/lib/pkgconfig"
+        "${fontconfig.dev}/lib/pkgconfig"
       ]}"
   '';
   
-  meta = with pkgs.lib; {
+  meta = {
     homepage = "https://github.com/lugvitc/whats4linux";
     description = "An unofficial WhatsApp client for Linux";
-    license = licenses.agpl3Plus;
-    platforms = platforms.linux;
+    license = lib.licenses.agpl3Plus;
+    maintainers = with lib.maintainers; [
+      zstg
+    ];
+    platforms = lib.platforms.linux;
     mainProgram = "whats4linux";
   };
 }
