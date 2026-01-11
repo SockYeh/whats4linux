@@ -46,6 +46,12 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m' # No Color (resets the text color)
+
     # Set explicit LDFLAGS for FontConfig linking
     export LDFLAGS="-L${pkgs.fontconfig.dev}/lib -lfontconfig"
     
@@ -82,6 +88,6 @@ pkgs.mkShell {
     # echo "PKG_CONFIG_PATH set to: $PKG_CONFIG_PATH"
     # echo "LD_LIBRARY_PATH set to: $LD_LIBRARY_PATH"
     # echo "LDFLAGS set to: $LDFLAGS"
-    echo "Now you can run: wails build -clean -tags \"webkit2_41 soup_3\""
+    echo -e Now you can run:$GREEN wails build -clean -tags \"webkit2_41 soup_3\"$NC
   '';
 }
