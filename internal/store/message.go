@@ -403,49 +403,7 @@ func (ms *MessageStore) InsertMessage(info *types.MessageInfo, msg *waE2E.Messag
 		width, height          int
 	)
 
-	switch {
-	case msg.GetConversation() != "":
-		text = msg.GetConversation()
-	case msg.GetExtendedTextMessage() != nil:
-		contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
-		text = msg.GetExtendedTextMessage().GetText()
-		replyToMessageID = contextInfo.GetStanzaID()
-		forwarded = contextInfo.GetIsForwarded()
-	}
-
-	switch {
-	case msg.GetImageMessage() != nil:
-		emc = msg.GetImageMessage()
-		text = msg.GetImageMessage().GetCaption()
-		mediaType = mtypes.MediaTypeImage
-		width = int(msg.GetImageMessage().GetWidth())
-		height = int(msg.GetImageMessage().GetHeight())
-	case msg.GetVideoMessage() != nil:
-		emc = msg.GetVideoMessage()
-		text = msg.GetVideoMessage().GetCaption()
-		mediaType = mtypes.MediaTypeVideo
-	case msg.GetDocumentMessage() != nil:
-		emc = msg.GetDocumentMessage()
-		text = msg.GetDocumentMessage().GetCaption()
-		mediaType = mtypes.MediaTypeDocument
-	case msg.GetAudioMessage() != nil:
-		emc = msg.GetAudioMessage()
-		mediaType = mtypes.MediaTypeAudio
-	case msg.GetStickerMessage() != nil:
-		emc = msg.GetStickerMessage()
-		mediaType = mtypes.MediaTypeSticker
-		width = int(msg.GetStickerMessage().GetWidth())
-		height = int(msg.GetStickerMessage().GetHeight())
-	default:
-		if text == "" {
-			// log.Printf("Unknown message content: %+v\n", msg)
-			return nil
-		}
-	}
-
-	if !forwarded && emc != nil && emc.GetContextInfo() != nil {
-		forwarded = emc.GetContextInfo().GetIsForwarded()
-	}
+	text, replyToMessageID, forwarded, emc, mediaType, width, height = extractMessageContent(msg)
 
 	if parsedHTML != "" {
 		text = parsedHTML
@@ -496,36 +454,14 @@ func (ms *MessageStore) UpdateMessageContent(messageID string, content *waE2E.Me
 		width, height int
 	)
 
-	switch {
-	case content.GetConversation() != "":
-		text = content.GetConversation()
-	case content.GetExtendedTextMessage() != nil:
-		text = content.GetExtendedTextMessage().GetText()
-	case content.GetImageMessage() != nil:
-		emc = content.GetImageMessage()
-		text = content.GetImageMessage().GetCaption()
-		mediaType = mtypes.MediaTypeImage
-		width = int(content.GetImageMessage().GetWidth())
-		height = int(content.GetImageMessage().GetHeight())
-	case content.GetVideoMessage() != nil:
-		emc = content.GetVideoMessage()
-		text = content.GetVideoMessage().GetCaption()
-		mediaType = mtypes.MediaTypeVideo
-	case content.GetDocumentMessage() != nil:
-		emc = content.GetDocumentMessage()
-		text = content.GetDocumentMessage().GetCaption()
-		mediaType = mtypes.MediaTypeDocument
-	case content.GetAudioMessage() != nil:
-		emc = content.GetAudioMessage()
-		mediaType = mtypes.MediaTypeAudio
-	case content.GetStickerMessage() != nil:
-		emc = content.GetStickerMessage()
-		mediaType = mtypes.MediaTypeSticker
-		width = int(content.GetStickerMessage().GetWidth())
-		height = int(content.GetStickerMessage().GetHeight())
-	default:
-		// log.Printf("Unknown message content for update: %+v\n", content)
+	text, _, _, emc, mediaType, width, height = extractMessageContent(content)
+
+	if text == "" {
 		return nil
+	}
+
+	if parsedHTML != "" {
+		text = parsedHTML
 	}
 
 	return ms.runSync(func(tx *sql.Tx) error {
@@ -997,6 +933,54 @@ type ContextInfo struct {
 	StanzaID      string `json:"stanzaId,omitempty"`
 	Participant   string `json:"participant,omitempty"`
 	QuotedMessage any    `json:"quotedMessage,omitempty"`
+}
+
+// extractMessageContent extracts text, reply info, and media from a WhatsApp message
+func extractMessageContent(msg *waE2E.Message) (text, replyToMessageID string, forwarded bool, emc wa.ExtendedMediaContent, mediaType mtypes.MediaType, width, height int) {
+	switch {
+	case msg.GetConversation() != "":
+		text = msg.GetConversation()
+	case msg.GetExtendedTextMessage() != nil:
+		contextInfo := msg.GetExtendedTextMessage().GetContextInfo()
+		text = msg.GetExtendedTextMessage().GetText()
+		replyToMessageID = contextInfo.GetStanzaID()
+		forwarded = contextInfo.GetIsForwarded()
+	}
+
+	switch {
+	case msg.GetImageMessage() != nil:
+		emc = msg.GetImageMessage()
+		text = msg.GetImageMessage().GetCaption()
+		mediaType = mtypes.MediaTypeImage
+		width = int(msg.GetImageMessage().GetWidth())
+		height = int(msg.GetImageMessage().GetHeight())
+	case msg.GetVideoMessage() != nil:
+		emc = msg.GetVideoMessage()
+		text = msg.GetVideoMessage().GetCaption()
+		mediaType = mtypes.MediaTypeVideo
+	case msg.GetDocumentMessage() != nil:
+		emc = msg.GetDocumentMessage()
+		text = msg.GetDocumentMessage().GetCaption()
+		mediaType = mtypes.MediaTypeDocument
+	case msg.GetAudioMessage() != nil:
+		emc = msg.GetAudioMessage()
+		mediaType = mtypes.MediaTypeAudio
+	case msg.GetStickerMessage() != nil:
+		emc = msg.GetStickerMessage()
+		mediaType = mtypes.MediaTypeSticker
+		width = int(msg.GetStickerMessage().GetWidth())
+		height = int(msg.GetStickerMessage().GetHeight())
+	default:
+		if text == "" {
+			return "", "", false, nil, 0, 0, 0
+		}
+	}
+
+	if !forwarded && emc != nil && emc.GetContextInfo() != nil {
+		forwarded = emc.GetContextInfo().GetIsForwarded()
+	}
+
+	return text, replyToMessageID, forwarded, emc, mediaType, width, height
 }
 
 // GetDecodedMessagesPaged returns a page of decoded messages from messages.db
