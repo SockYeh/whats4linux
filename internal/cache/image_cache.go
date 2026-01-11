@@ -32,17 +32,18 @@ type ImageMeta struct {
 
 // NewImageCache creates a new image cache instance
 func NewImageCache() (*ImageCache, error) {
-	homeDir, err := os.UserHomeDir()
+	cacheDir, err := os.UserCacheDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %v", err)
+		return nil, fmt.Errorf("failed to get cache directory: %v", err)
 	}
 
-	imagesDir := filepath.Join(homeDir, ".cache", "whats4linux", "images")
+	baseDir := filepath.Join(cacheDir, "whats4linux")
+	imagesDir := filepath.Join(baseDir, "images")
 	if err := os.MkdirAll(imagesDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create images directory: %v", err)
 	}
 
-	dbPath := filepath.Join(homeDir, ".cache", "whats4linux", "idxdb")
+	dbPath := filepath.Join(baseDir, "idxdb")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create idxdb directory: %v", err)
 	}
@@ -85,16 +86,9 @@ func (ic *ImageCache) SaveImage(messageID string, data []byte, mime string, widt
 	h := sha256.Sum256(data)
 	hashStr := hex.EncodeToString(h[:])
 
-	ext := ".jpg"
-	if mime == "image/png" {
-		ext = ".png"
-	} else if mime == "image/gif" {
-		ext = ".gif"
-	} else if mime == "image/webp" {
-		ext = ".webp"
-	}
-
+	ext := mimeToExt(mime)
 	path := filepath.Join(ic.imagesDir, hashStr+ext)
+
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.WriteFile(path, data, 0644); err != nil {
 			return "", fmt.Errorf("failed to write image file: %v", err)
@@ -112,7 +106,14 @@ func (ic *ImageCache) SaveImage(messageID string, data []byte, mime string, widt
 // GetImageByMessageID retrieves image metadata by message ID
 func (ic *ImageCache) GetImageByMessageID(messageID string) (*ImageMeta, error) {
 	var meta ImageMeta
-	err := ic.getStmt.QueryRow(messageID).Scan(&meta.MessageID, &meta.SHA256, &meta.Mime, &meta.Width, &meta.Height, &meta.CreatedAt)
+	err := ic.getStmt.QueryRow(messageID).Scan(
+		&meta.MessageID,
+		&meta.SHA256,
+		&meta.Mime,
+		&meta.Width,
+		&meta.Height,
+		&meta.CreatedAt,
+	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -126,7 +127,7 @@ func (ic *ImageCache) GetImagesByMessageIDs(messageIDs []string) (map[string]*Im
 	}
 
 	placeholders := make([]string, len(messageIDs))
-	args := make([]interface{}, len(messageIDs))
+	args := make([]any, len(messageIDs))
 	for i, id := range messageIDs {
 		placeholders[i] = "?"
 		args[i] = id
@@ -139,10 +140,17 @@ func (ic *ImageCache) GetImagesByMessageIDs(messageIDs []string) (map[string]*Im
 	}
 	defer rows.Close()
 
-	result := make(map[string]*ImageMeta)
+	result := make(map[string]*ImageMeta, len(messageIDs))
 	for rows.Next() {
 		var meta ImageMeta
-		if err := rows.Scan(&meta.MessageID, &meta.SHA256, &meta.Mime, &meta.Width, &meta.Height, &meta.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&meta.MessageID,
+			&meta.SHA256,
+			&meta.Mime,
+			&meta.Width,
+			&meta.Height,
+			&meta.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		result[meta.MessageID] = &meta
@@ -160,16 +168,7 @@ func (ic *ImageCache) GetImageFilePath(messageID string) (string, error) {
 		return "", fmt.Errorf("image not found for message ID: %s", messageID)
 	}
 
-	ext := ".jpg"
-	if meta.Mime == "image/png" {
-		ext = ".png"
-	} else if meta.Mime == "image/gif" {
-		ext = ".gif"
-	} else if meta.Mime == "image/webp" {
-		ext = ".webp"
-	}
-
-	return meta.SHA256 + ext, nil
+	return meta.SHA256 + mimeToExt(meta.Mime), nil
 }
 
 // ReadImageByMessageID reads an image by message ID
@@ -182,16 +181,7 @@ func (ic *ImageCache) ReadImageByMessageID(messageID string) ([]byte, string, er
 		return nil, "", fmt.Errorf("image not found for message ID: %s", messageID)
 	}
 
-	ext := ".jpg"
-	if meta.Mime == "image/png" {
-		ext = ".png"
-	} else if meta.Mime == "image/gif" {
-		ext = ".gif"
-	} else if meta.Mime == "image/webp" {
-		ext = ".webp"
-	}
-
-	path := filepath.Join(ic.imagesDir, meta.SHA256+ext)
+	path := filepath.Join(ic.imagesDir, meta.SHA256+mimeToExt(meta.Mime))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read image file: %v", err)
@@ -208,12 +198,13 @@ func (ic *ImageCache) SaveAvatar(jid string, data []byte, mime string) (string, 
 
 // DeleteAvatar deletes an avatar image from cache by JID
 func (ic *ImageCache) DeleteAvatar(jid string) error {
-	filename, err := (ic.GetAvatarFilePath(jid))
+	filename, err := ic.GetAvatarFilePath(jid)
 	if filename == "" {
 		return nil
 	}
+
 	filep := filepath.Join(ic.imagesDir, filename)
-	fmt.Printf("Deleting avatar file: %s \n", filename)
+	fmt.Printf("Deleting avatar file: %s\n", filename)
 
 	if err == nil && filep != "" {
 		if errRemove := os.Remove(filep); errRemove != nil && !os.IsNotExist(errRemove) {
@@ -251,4 +242,17 @@ func (ic *ImageCache) Close() error {
 		ic.saveStmt.Close()
 	}
 	return ic.db.Close()
+}
+
+func mimeToExt(mime string) string {
+	switch mime {
+	case "image/png":
+		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ".jpg"
+	}
 }

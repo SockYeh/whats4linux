@@ -1,10 +1,11 @@
 import { useEffect, useRef, useCallback, memo } from "react"
 import clsx from "clsx"
-import { GetChatList, GetCachedAvatar } from "../../wailsjs/go/api/Api"
+import { GetChatList, GetCachedAvatar, GetSelfAvatar } from "../../wailsjs/go/api/Api"
 import { api } from "../../wailsjs/go/models"
 import { EventsOn } from "../../wailsjs/runtime/runtime"
 import { ChatDetail } from "./ChatDetail"
 import { useChatStore, useChatById, useFilteredChatIds } from "../store"
+import { useSelfAvatarStore } from "../store/useSelfAvatarStore"
 import type { ChatItem } from "../store/types"
 import {
   GroupIcon,
@@ -76,12 +77,13 @@ const ChatAvatar = ({ chat }: ChatAvatarProps) => {
 
 interface HeaderProps {
   onOpenSettings: () => void
+  avatar?: string
 }
 
-const Header = ({ onOpenSettings }: HeaderProps) => (
+const Header = ({ onOpenSettings, avatar }: HeaderProps) => (
   <div className="h-16 bg-light-secondary dark:bg-dark-secondary flex items-center justify-between px-4 border-b border-gray-200 dark:border-dark-tertiary">
-    <div className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden">
-      <UserAvatar />
+    <div className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden flex items-center justify-center">
+      {avatar ? <img src={avatar} className="w-full h-full object-cover" /> : <UserAvatar />}
     </div>
     <div className="flex gap-4 text-gray-500 dark:text-gray-400">
       <button title="New Chat" className="hover:bg-hover-icons p-2 rounded-full">
@@ -238,6 +240,8 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
   const selectedChatAvatar = useChatStore(state => state.selectedChatAvatar)
   const searchTerm = useChatStore(state => state.searchTerm)
   const setChats = useChatStore(state => state.setChats)
+  const selfAvatar = useSelfAvatarStore(state => state.selfAvatar)
+  const setSelfAvatar = useSelfAvatarStore(state => state.setSelfAvatar)
   const selectChat = useChatStore(state => state.selectChat)
   const setSearchTerm = useChatStore(state => state.setSearchTerm)
   const clearUnreadCount = useChatStore(state => state.clearUnreadCount)
@@ -283,20 +287,49 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
 
   const loadAvatars = useCallback(
     async (chatItems: ChatItem[]) => {
-      for (const chat of chatItems) {
-        if (chat.avatar) continue // Already has avatar
-        try {
-          const avatarURL = await GetCachedAvatar(chat.id, false)
-          if (mountedRef.current) {
-            updateSingleChat(chat.id, { avatar: avatarURL })
+      const chatsNeedingAvatars = chatItems.filter(c => !c.avatar)
+
+      if (chatsNeedingAvatars.length === 0) return
+
+      // Can change this later but
+      // 5 works well for now.
+      const CONCURRENCY = 5
+      let index = 0
+
+      const worker = async () => {
+        while (index < chatsNeedingAvatars.length) {
+          const chat = chatsNeedingAvatars[index++]
+
+          try {
+            const avatarURL = await GetCachedAvatar(chat.id, false)
+            if (avatarURL && mountedRef.current) {
+              useChatStore.getState().updateSingleChat(chat.id, { avatar: avatarURL })
+            }
+          } catch (err) {
+            console.error("Avatar load failed:", chat.id, err)
           }
-        } catch (err) {
-          console.error(`Error loading avatar for ${chat.id}:`, err)
         }
       }
+
+      await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()))
     },
     [updateSingleChat],
   )
+
+  const loadSelfAvatar = useCallback(async () => {
+    try {
+      const avatarURL = await GetSelfAvatar(false)
+
+      if (!mountedRef.current) {
+        console.log("Component unmounted, aborting self avatar set")
+        return
+      }
+
+      setSelfAvatar(avatarURL)
+    } catch (err) {
+      console.error("Failed to load self avatar:", err)
+    }
+  }, [setSelfAvatar])
 
   const fetchChats = useCallback(async () => {
     if (isFetchingRef.current) return
@@ -322,6 +355,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
       setChats(items)
       // Load avatars asynchronously without blocking the UI
       loadAvatars(items)
+      loadSelfAvatar()
       initialFetchDoneRef.current = true
     } catch (err) {
       console.error("Error fetching chats:", err)
@@ -394,7 +428,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
       unsubPictureUpdate()
       unsubRefresh()
     }
-  }, [fetchChats, getChat, updateChatLastMessage, updateSingleChat])
+  }, [fetchChats, getChat, loadSelfAvatar, updateChatLastMessage, updateSingleChat])
 
   return (
     <div className="flex h-screen bg-light-secondary dark:bg-black overflow-hidden">
@@ -407,7 +441,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
           selectedChatId ? "hidden md:flex" : "flex",
         )}
       >
-        <Header onOpenSettings={onOpenSettings} />
+        <Header onOpenSettings={onOpenSettings} avatar={selfAvatar} />
         <SearchBar value={searchTerm} onChange={setSearchTerm} />
 
         <div className="flex-1 overflow-y-auto">
