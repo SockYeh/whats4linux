@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"github.com/lugvitc/whats4linux/internal/misc"
 	"github.com/lugvitc/whats4linux/internal/settings"
 	"github.com/lugvitc/whats4linux/internal/store"
+	mtypes "github.com/lugvitc/whats4linux/internal/types"
 	"github.com/lugvitc/whats4linux/internal/wa"
 	"github.com/nyaruka/phonenumbers"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -174,7 +176,6 @@ func canonicalUserJID(ctx context.Context, client *whatsmeow.Client, jid types.J
 			jid = pn
 		}
 	}
-
 	return jid.ToNonAD()
 }
 
@@ -227,65 +228,34 @@ func (a *Api) FetchContacts() ([]Contact, error) {
 	return result, nil
 }
 
-func (a *Api) FetchMessagesPaged(jid string, limit int, beforeTimestamp int64) ([]store.Message, error) {
-	parsedJID, err := types.ParseJID(jid)
+func (a *Api) FetchMessagesPaged(jid string, limit int, beforeTimestamp int64) ([]store.DecodedMessage, error) {
+	messages, err := a.messageStore.GetDecodedMessagesPaged(jid, beforeTimestamp, limit)
 	if err != nil {
 		return nil, err
 	}
-	messages := a.messageStore.GetMessagesPaged(parsedJID, beforeTimestamp, limit)
 	return messages, nil
 }
 
 func (a *Api) DownloadMedia(chatJID string, messageID string) (string, error) {
-	parsedJID, err := types.ParseJID(chatJID)
-	if err != nil {
-		return "", err
-	}
-	msg := a.messageStore.GetMessage(parsedJID, messageID)
-	if msg == nil {
+	msg, err := a.messageStore.GetMessageWithMedia(chatJID, messageID)
+	if err != nil || msg == nil {
 		return "", fmt.Errorf("message not found")
 	}
 
-	var data []byte
-	var downloadErr error
-	var mime string
-	var width, height int
+	mime := msg.Media.GetMimetype()
+	width, height := msg.Media.GetDimensions()
 
-	if msg.Content.ImageMessage != nil {
-		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.ImageMessage)
-		mime = msg.Content.ImageMessage.GetMimetype()
-		if mime == "" {
-			mime = "image/jpeg"
-		}
-		width = int(msg.Content.ImageMessage.GetWidth())
-		height = int(msg.Content.ImageMessage.GetHeight())
-	} else if msg.Content.VideoMessage != nil {
-		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.VideoMessage)
-		mime = msg.Content.VideoMessage.GetMimetype()
-	} else if msg.Content.AudioMessage != nil {
-		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.AudioMessage)
-		mime = msg.Content.AudioMessage.GetMimetype()
-	} else if msg.Content.DocumentMessage != nil {
-		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.DocumentMessage)
-		mime = msg.Content.DocumentMessage.GetMimetype()
-	} else if msg.Content.StickerMessage != nil {
-		data, downloadErr = a.waClient.Download(a.ctx, msg.Content.StickerMessage)
-		mime = msg.Content.StickerMessage.GetMimetype()
-		if mime == "" {
-			mime = "image/webp"
-		}
-		width = int(msg.Content.StickerMessage.GetWidth())
-		height = int(msg.Content.StickerMessage.GetHeight())
-	} else {
-		return "", fmt.Errorf("no media content found")
+	mediaType := msg.Media.GetMediaType()
+	if mediaType == whatsmeow.MediaImage && mime == "" {
+		mime = "image/jpeg"
 	}
-
-	if downloadErr != nil {
-		return "", downloadErr
+	data, err := a.waClient.Download(a.ctx, msg.Media)
+	if err != nil {
+		return "", fmt.Errorf("failed to download media: %v", err)
 	}
 
 	// Save to cache for images and stickers
-	if msg.Content.ImageMessage != nil || msg.Content.StickerMessage != nil {
+	if mediaType == whatsmeow.MediaImage {
 		_, err = a.imageCache.SaveImage(messageID, data, mime, width, height)
 		if err != nil {
 			// Log error but continue
@@ -352,7 +322,7 @@ func (a *Api) GetProfile(jidStr string) (Contact, error) {
 		}
 	}
 
-	contact, _ := a.waClient.Store.Contacts.GetContact(a.ctx, targetJID)
+	contact, _ := a.waClient.Store.Contacts.GetContact(a.ctx, targetJID.ToNonAD())
 	rawNum := "+" + targetJID.User
 
 	jid := rawNum
@@ -385,46 +355,99 @@ func (a *Api) GetProfile(jidStr string) (Contact, error) {
 	}, nil
 }
 
+func buildQuotedMessage(msg *store.ExtendedMessage) *waE2E.Message {
+	if msg == nil {
+		return nil
+	}
+	var quotedMessage waE2E.Message
+	if msg.ReplyToMessageID == "" {
+		quotedMessage.Conversation = proto.String(msg.Text)
+	} else {
+		quotedMessage.ExtendedTextMessage = &waE2E.ExtendedTextMessage{
+			Text: proto.String(msg.Text),
+		}
+	}
+
+	if msg.Media == nil {
+		return &quotedMessage
+	}
+
+	switch msg.Media.GetMediaGeneralType() {
+	case mtypes.MediaTypeImage:
+		width, height := msg.Media.GetDimensions()
+		quotedMessage.ImageMessage = &waE2E.ImageMessage{
+			URL:           proto.String(msg.Media.GetURL()),
+			Mimetype:      proto.String(msg.Media.GetMimetype()),
+			Caption:       proto.String(msg.Text),
+			FileSHA256:    msg.Media.GetFileSHA256(),
+			Width:         proto.Uint32(uint32(width)),
+			Height:        proto.Uint32(uint32(height)),
+			FileEncSHA256: msg.Media.GetFileEncSHA256(),
+			DirectPath:    proto.String(msg.Media.GetDirectPath()),
+		}
+	case mtypes.MediaTypeVideo:
+		quotedMessage.VideoMessage = &waE2E.VideoMessage{
+			URL:           proto.String(msg.Media.GetURL()),
+			Mimetype:      proto.String(msg.Media.GetMimetype()),
+			Caption:       proto.String(msg.Text),
+			FileSHA256:    msg.Media.GetFileSHA256(),
+			FileEncSHA256: msg.Media.GetFileEncSHA256(),
+			DirectPath:    proto.String(msg.Media.GetDirectPath()),
+		}
+	case mtypes.MediaTypeAudio:
+		quotedMessage.AudioMessage = &waE2E.AudioMessage{
+			URL:           proto.String(msg.Media.GetURL()),
+			Mimetype:      proto.String(msg.Media.GetMimetype()),
+			FileSHA256:    msg.Media.GetFileSHA256(),
+			FileEncSHA256: msg.Media.GetFileEncSHA256(),
+			DirectPath:    proto.String(msg.Media.GetDirectPath()),
+		}
+	case mtypes.MediaTypeDocument:
+		quotedMessage.DocumentMessage = &waE2E.DocumentMessage{
+			URL:           proto.String(msg.Media.GetURL()),
+			Mimetype:      proto.String(msg.Media.GetMimetype()),
+			Caption:       proto.String(msg.Text),
+			FileSHA256:    msg.Media.GetFileSHA256(),
+			FileEncSHA256: msg.Media.GetFileEncSHA256(),
+			DirectPath:    proto.String(msg.Media.GetDirectPath()),
+		}
+	case mtypes.MediaTypeSticker:
+		quotedMessage.StickerMessage = &waE2E.StickerMessage{
+			URL:           proto.String(msg.Media.GetURL()),
+			Mimetype:      proto.String(msg.Media.GetMimetype()),
+			FileSHA256:    msg.Media.GetFileSHA256(),
+			FileEncSHA256: msg.Media.GetFileEncSHA256(),
+			DirectPath:    proto.String(msg.Media.GetDirectPath()),
+		}
+	}
+
+	return &quotedMessage
+}
+
 func (a *Api) buildQuotedContext(chatJID types.JID, quotedMessageID string) (*waE2E.ContextInfo, error) {
 	if quotedMessageID == "" {
 		return nil, nil
 	}
 
-	quotedMsg := a.messageStore.GetMessage(chatJID, quotedMessageID)
-	if quotedMsg == nil || quotedMsg.Content == nil {
+	msg, err := a.messageStore.GetMessageWithMedia(chatJID.String(), quotedMessageID)
+	if err != nil {
 		return nil, fmt.Errorf("quoted message not found")
 	}
 
-	clonedQuotedMsg := proto.Clone(quotedMsg.Content).(*waE2E.Message)
-	switch {
-	case clonedQuotedMsg.ExtendedTextMessage != nil:
-		clonedQuotedMsg.ExtendedTextMessage.ContextInfo = nil
-	case clonedQuotedMsg.ImageMessage != nil:
-		clonedQuotedMsg.ImageMessage.ContextInfo = nil
-	case clonedQuotedMsg.StickerMessage != nil:
-		clonedQuotedMsg.StickerMessage.ContextInfo = nil
-	case clonedQuotedMsg.VideoMessage != nil:
-		clonedQuotedMsg.VideoMessage.ContextInfo = nil
-	case clonedQuotedMsg.AudioMessage != nil:
-		clonedQuotedMsg.AudioMessage.ContextInfo = nil
-	case clonedQuotedMsg.DocumentMessage != nil:
-		clonedQuotedMsg.DocumentMessage.ContextInfo = nil
-	case clonedQuotedMsg.LocationMessage != nil:
-		clonedQuotedMsg.LocationMessage.ContextInfo = nil
-	case clonedQuotedMsg.ContactMessage != nil:
-		clonedQuotedMsg.ContactMessage.ContextInfo = nil
-	default:
-	}
-	clonedQuotedMsg.MessageContextInfo = nil
+	quotedMessage := buildQuotedMessage(msg)
 
-	stanzaID := quotedMsg.Info.ID
+	if quotedMessage == nil {
+		return nil, fmt.Errorf("failed to build quoted message")
+	}
+
+	stanzaID := quotedMessageID
 	contextInfo := &waE2E.ContextInfo{
 		StanzaID:      &stanzaID,
-		QuotedMessage: clonedQuotedMsg,
+		QuotedMessage: quotedMessage,
 	}
 
-	if quotedMsg.Info.Sender.User != "" {
-		participant := quotedMsg.Info.Sender.String()
+	if msg.Info.Sender.User != "" {
+		participant := msg.Info.Sender.String()
 		contextInfo.Participant = &participant
 	}
 
@@ -447,6 +470,7 @@ func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error
 	case "text":
 		contextInfo, err := a.buildQuotedContext(parsedJID, content.QuotedMessageID)
 		if err != nil {
+			log.Println("Failed to build quoted context:", err)
 			return "", err
 		}
 
@@ -618,8 +642,11 @@ func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error
 		return "", fmt.Errorf("unsupported message type: %s", content.Type)
 	}
 
+	log.Printf("SendMessage Content: %+v\n", msgContent)
+
 	resp, err := a.waClient.SendMessage(a.ctx, parsedJID, msgContent)
 	if err != nil {
+		log.Println("SendMessage error:", err)
 		return "", err
 	}
 
@@ -636,7 +663,8 @@ func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error
 		},
 		Message: msgContent,
 	}
-	a.messageStore.ProcessMessageEvent(a.ctx, a.waClient.Store.LIDs, msgEvent)
+	parsedHTML := a.processMessageText(msgContent)
+	messageID := a.messageStore.ProcessMessageEvent(a.ctx, a.waClient.Store.LIDs, msgEvent, parsedHTML)
 
 	// Extract message text for chat list update
 	var messageText string
@@ -661,19 +689,38 @@ func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error
 		}
 	}
 
-	msg := store.Message{
-		Info:    msgEvent.Info,
-		Content: msgEvent.Message,
+	var msg any
+	if messageID != "" {
+		decodedMsg, err := a.messageStore.GetDecodedMessage(parsedJID.String(), messageID)
+		if err == nil {
+			msg = decodedMsg
+		}
 	}
+
+	if msg == nil {
+		msg = struct {
+			Info    types.MessageInfo
+			Content *waE2E.Message
+		}{
+			Info:    msgEvent.Info,
+			Content: msgEvent.Message,
+		}
+	}
+
 	runtime.EventsEmit(a.ctx, "wa:new_message", map[string]any{
 		"chatId":      parsedJID.String(),
 		"message":     msg,
 		"messageText": messageText,
+		"parsedHTML":  parsedHTML,
 		"timestamp":   resp.Timestamp.Unix(),
 		"sender":      "You",
 	})
 
 	return resp.ID, nil
+}
+
+func (a *Api) GetJIDUser(jid types.JID) string {
+	return jid.User
 }
 
 func (a *Api) mainEventHandler(evt any) {
@@ -682,7 +729,33 @@ func (a *Api) mainEventHandler(evt any) {
 		// buf, _ := json.Marshal(v)
 		// fmt.Println("[Event] Message:", string(buf))
 
-		a.messageStore.ProcessMessageEvent(a.ctx, a.waClient.Store.LIDs, v)
+		parsedHTML := a.processMessageText(v.Message)
+
+		// Handle message edits: re-parse the edited content
+		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil && protoMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
+			newContent := protoMsg.GetEditedMessage()
+			if newContent != nil {
+				parsedHTML = a.processMessageText(newContent)
+			}
+		}
+
+		messageID := a.messageStore.ProcessMessageEvent(a.ctx, a.waClient.Store.LIDs, v, parsedHTML)
+
+		// If a message was processed (inserted or updated), emit the decoded message from DB
+		if messageID != "" {
+			updatedMsg, err := a.messageStore.GetDecodedMessage(v.Info.Chat.String(), messageID)
+			if err == nil {
+				runtime.EventsEmit(a.ctx, "wa:new_message", map[string]any{
+					"chatId":      v.Info.Chat.String(),
+					"message":     updatedMsg,
+					"messageText": updatedMsg.Text, // Text field contains HTML now, but better than nothing or we can use updatedMsg.Text
+					"timestamp":   v.Info.Timestamp.Unix(),
+					"sender":      v.Info.PushName,
+				})
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				log.Println("Failed to get decoded message after processing:", err)
+			}
+		}
 
 		// Automatically cache images and stickers when they arrive
 		go func() {
@@ -723,22 +796,6 @@ func (a *Api) mainEventHandler(evt any) {
 			}
 		}()
 
-		// Emit the message data directly so frontend doesn't need to make an API call
-		// Extract message text for chat list update
-		messageText := store.ExtractMessageText(v.Message)
-
-		msg := store.Message{
-			Info:    v.Info,
-			Content: v.Message,
-		}
-		runtime.EventsEmit(a.ctx, "wa:new_message", map[string]any{
-			"chatId":      v.Info.Chat.String(),
-			"message":     msg,
-			"messageText": messageText,
-			"timestamp":   v.Info.Timestamp.Unix(),
-			"sender":      v.Info.PushName,
-		})
-
 	case *events.Picture:
 		go a.GetCachedAvatar(v.JID.String(), true)
 
@@ -754,12 +811,12 @@ func (a *Api) mainEventHandler(evt any) {
 		// wait here until logged in.
 		a.cw.Initialise(a.waClient)
 		a.waClient.SendPresence(a.ctx, types.PresenceAvailable)
-		// Run migration
+		// Run migration for messages.db
 		err := a.messageStore.MigrateLIDToPN(a.ctx, a.waClient.Store.LIDs)
 		if err != nil {
-			log.Println("Migration failed:", err)
+			log.Println("Messages DB migration failed:", err)
 		} else {
-			log.Println("Migration completed successfully")
+			log.Println("Messages DB migration completed successfully")
 			runtime.EventsEmit(a.ctx, "wa:chat_list_refresh")
 		}
 	case *events.Disconnected:
@@ -808,31 +865,14 @@ func (a *Api) GetSettings() map[string]any {
 }
 
 // downloadMedia downloads media from a message and returns data, mime, width, height
-func (a *Api) downloadMedia(msg *store.Message) ([]byte, string, int, int, error) {
-	var data []byte
-	var err error
-	var mime string
-	var width, height int
+func (a *Api) downloadMedia(msg *store.ExtendedMessage) ([]byte, string, int, int, error) {
+	data, err := a.waClient.Download(a.ctx, msg.Media)
+	mime := msg.Media.GetMimetype()
 
-	if msg.Content.ImageMessage != nil {
-		data, err = a.waClient.Download(a.ctx, msg.Content.ImageMessage)
-		mime = msg.Content.ImageMessage.GetMimetype()
-		if mime == "" {
-			mime = "image/jpeg"
-		}
-		width = int(msg.Content.ImageMessage.GetWidth())
-		height = int(msg.Content.ImageMessage.GetHeight())
-	} else if msg.Content.StickerMessage != nil {
-		data, err = a.waClient.Download(a.ctx, msg.Content.StickerMessage)
-		mime = msg.Content.StickerMessage.GetMimetype()
-		if mime == "" {
-			mime = "image/webp"
-		}
-		width = int(msg.Content.StickerMessage.GetWidth())
-		height = int(msg.Content.StickerMessage.GetHeight())
-	} else {
-		return nil, "", 0, 0, fmt.Errorf("message is not an image or sticker")
+	if mime == "" && msg.Media.GetMediaType() == whatsmeow.MediaImage {
+		mime = "image/jpeg"
 	}
+	width, height := msg.Media.GetDimensions()
 
 	return data, mime, width, height, err
 }
@@ -845,8 +885,8 @@ func (a *Api) GetCachedImage(messageID string) (string, error) {
 	}
 
 	// Image not in cache, download and cache it
-	msg := a.messageStore.GetMessageByID(messageID)
-	if msg == nil {
+	msg, err := a.messageStore.GetMessageWithMediaByID(messageID)
+	if err != nil || msg == nil {
 		return "", fmt.Errorf("message not found")
 	}
 
@@ -1061,15 +1101,6 @@ func replaceMentions(text string, mentionedJIDs []string, a *Api) string {
 	return result
 }
 
-func (a *Api) RenderMarkdown(md string, mentionedJIDs []string) string {
-	processed := markdown.MarkdownLinesToHTML(md)
-	processed = replaceMentions(processed, mentionedJIDs, a)
-	return processed
-}
-func (a *Api) RenderMarkdownPlain(md string) string {
-	processed := markdown.MarkdownLinesToHTML(md)
-	return processed
-}
 func (a *Api) GetGroupInfo(jidStr string) (Group, error) {
 	if !strings.HasSuffix(jidStr, "@g.us") {
 		return Group{}, fmt.Errorf("JID is not a group JID")
@@ -1111,4 +1142,52 @@ func (a *Api) GetGroupInfo(jidStr string) (Group, error) {
 		ParticipantCount: GroupInfo.ParticipantCount,
 		Participants:     participants,
 	}, nil
+}
+func (a *Api) processMessageText(msg *waE2E.Message) string {
+	if msg == nil {
+		return ""
+	}
+	var text string
+	var mentionedJIDs []string
+
+	if msg.GetConversation() != "" {
+		text = msg.GetConversation()
+	} else if msg.GetExtendedTextMessage() != nil {
+		text = msg.GetExtendedTextMessage().GetText()
+		if msg.GetExtendedTextMessage().GetContextInfo() != nil {
+			mentionedJIDs = msg.GetExtendedTextMessage().GetContextInfo().GetMentionedJID()
+		}
+	} else {
+		switch {
+		case msg.GetImageMessage() != nil:
+			text = msg.GetImageMessage().GetCaption()
+			if msg.GetImageMessage().GetContextInfo() != nil {
+				mentionedJIDs = msg.GetImageMessage().GetContextInfo().GetMentionedJID()
+			}
+		case msg.GetVideoMessage() != nil:
+			text = msg.GetVideoMessage().GetCaption()
+			if msg.GetVideoMessage().GetContextInfo() != nil {
+				mentionedJIDs = msg.GetVideoMessage().GetContextInfo().GetMentionedJID()
+			}
+		case msg.GetDocumentMessage() != nil:
+			text = msg.GetDocumentMessage().GetCaption()
+			if msg.GetDocumentMessage().GetContextInfo() != nil {
+				mentionedJIDs = msg.GetDocumentMessage().GetContextInfo().GetMentionedJID()
+			}
+		}
+	}
+
+	if text == "" {
+		return ""
+	}
+
+	// First convert Markdown to HTML (which handles escaping)
+	htmlText := markdown.MarkdownLinesToHTML(text)
+
+	// Then replace mentions in the HTML
+	if len(mentionedJIDs) > 0 {
+		htmlText = replaceMentions(htmlText, mentionedJIDs, a)
+	}
+
+	return htmlText
 }
