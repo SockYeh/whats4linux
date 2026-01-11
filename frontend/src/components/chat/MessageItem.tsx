@@ -72,7 +72,9 @@ export function MessageItem({
   const handleCopy = () => {
     const textToCopy = content?.conversation || content?.extendedTextMessage?.text || ""
     if (textToCopy) {
-      navigator.clipboard.writeText(textToCopy)
+      const div = document.createElement("div")
+      div.innerHTML = textToCopy
+      navigator.clipboard.writeText(div.innerText)
     }
   }
 

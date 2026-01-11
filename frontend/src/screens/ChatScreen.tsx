@@ -170,9 +170,9 @@ const ChatListItemContent = memo(({ chat, isSelected, onSelect }: ChatListItemCo
             : "yesterday"}
         </span>
       </div>
-      <div className="text-sm text-gray-500 dark:text-gray-400 truncate [&_p]:inline [&_p]:m-0">
+      <div className="text-sm text-gray-500 dark:text-gray-400 truncate [&_p]:inline [&_p]:m-0 ">
         {chat.sender && chat.type === "group" && <span className="mr-1">{chat.sender}: </span>}
-        <span dangerouslySetInnerHTML={{ __html: chat.subtitle }} />
+        <span className="[&_br]:hidden no-formatting"dangerouslySetInnerHTML={{ __html: chat.subtitle }} />
       </div>
     </div>
   </div>
