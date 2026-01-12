@@ -170,7 +170,9 @@ export function ChatInput({
       (content?.stickerMessage ? "Sticker" : undefined) ||
       "Message"
 
-    const senderLabel = replyingTo.Info.IsFromMe ? "You" : senderName || replyingTo.Info.PushName || "Contact"
+    const senderLabel = replyingTo.Info.IsFromMe
+      ? "You"
+      : senderName || replyingTo.Info.PushName || "Contact"
 
     return (
       <div className="mb-2 flex items-start gap-2 rounded-md bg-black/5 dark:bg-white/10 p-2 text-xs">
