@@ -878,7 +878,7 @@ func (ms *MessageStore) AddReactionToMessage(targetID, reaction, senderJID strin
 
 	err := ms.runSync(func(tx *sql.Tx) error {
 		// Delete any existing reaction from this sender for this message
-		_, err := tx.Exec(`DELETE FROM reactions WHERE message_id = ? AND sender_id = ?`, targetID, senderJID)
+		_, err := tx.Exec(query.DeleteReactionsByMessageIDAndSenderID, targetID, senderJID)
 		if err != nil {
 			return err
 		}

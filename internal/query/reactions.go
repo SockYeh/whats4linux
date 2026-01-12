@@ -23,6 +23,11 @@ const (
 	WHERE message_id = ? AND sender_id = ? AND emoji = ?
 	`
 
+	DeleteReactionsByMessageIDAndSenderID = `
+	DELETE FROM reactions 
+	WHERE message_id = ? AND sender_id = ?
+	`
+
 	SelectReactionsByMessageID = `
 	SELECT id, message_id, sender_id, emoji
 	FROM reactions
