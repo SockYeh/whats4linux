@@ -41,6 +41,64 @@ type ChatMessage struct {
 	Sender      string
 }
 
+// DecodedMessage represents a message from messages.db with decoded fields
+type DecodedMessage struct {
+	Type             mtypes.MediaType `json:"type"`
+	ReplyToMessageID string           `json:"reply_to_message_id"`
+	Edited           bool             `json:"edited"`
+	Forwarded        bool             `json:"forwarded"`
+	Reactions        []Reaction       `json:"reactions"`
+	// Info provides compatibility with frontend that expects types.MessageInfo structure
+	Info DecodedMessageInfo `json:"Info"`
+	// Content provides a minimal content structure for frontend rendering
+	Content *DecodedMessageContent `json:"Content"`
+}
+
+// DecodedMessageInfo is a simplified MessageInfo for frontend compatibility
+type DecodedMessageInfo struct {
+	ID        string `json:"ID"`
+	Timestamp string `json:"Timestamp"`
+	IsFromMe  bool   `json:"IsFromMe"`
+	PushName  string `json:"PushName"`
+	Sender    string `json:"Sender"`
+	Chat      string `json:"Chat"`
+}
+
+// DecodedMessageContent provides minimal content info for frontend rendering
+type DecodedMessageContent struct {
+	Conversation        string                  `json:"conversation,omitempty"`
+	ExtendedTextMessage *ExtendedTextContent    `json:"extendedTextMessage,omitempty"`
+	ImageMessage        *MediaMessageContent    `json:"imageMessage,omitempty"`
+	VideoMessage        *MediaMessageContent    `json:"videoMessage,omitempty"`
+	AudioMessage        *MediaMessageContent    `json:"audioMessage,omitempty"`
+	DocumentMessage     *DocumentMessageContent `json:"documentMessage,omitempty"`
+	StickerMessage      *MediaMessageContent    `json:"stickerMessage,omitempty"`
+}
+
+type ExtendedTextContent struct {
+	Text        string       `json:"text,omitempty"`
+	ContextInfo *ContextInfo `json:"contextInfo,omitempty"`
+}
+
+type MediaMessageContent struct {
+	Caption     string       `json:"caption,omitempty"`
+	Mimetype    string       `json:"mimetype,omitempty"`
+	ContextInfo *ContextInfo `json:"contextInfo,omitempty"`
+}
+
+type DocumentMessageContent struct {
+	Caption     string       `json:"caption,omitempty"`
+	FileName    string       `json:"fileName,omitempty"`
+	Mimetype    string       `json:"mimetype,omitempty"`
+	ContextInfo *ContextInfo `json:"contextInfo,omitempty"`
+}
+
+type ContextInfo struct {
+	StanzaID      string                 `json:"stanzaId,omitempty"`
+	Participant   string                 `json:"participant,omitempty"`
+	QuotedMessage *DecodedMessageContent `json:"quotedMessage,omitempty"`
+}
+
 type writeJob func(*sql.Tx) error
 
 type MessageStore struct {
@@ -860,73 +918,6 @@ func (ms *MessageStore) AddReactionToMessage(targetID, reaction, senderJID strin
 	return nil
 }
 
-// DecodedMessage represents a message from messages.db with decoded fields
-//
-//	SELECT message_id, chat_jid, sender_jid, timestamp, is_from_me, text, has_media, reply_to_message_id, edited, forwarded
-type DecodedMessage struct {
-	MessageID        string           `json:"message_id"`
-	ChatJID          string           `json:"chat_jid"`
-	SenderJID        string           `json:"sender_jid"`
-	Timestamp        int64            `json:"timestamp"`
-	IsFromMe         bool             `json:"is_from_me"`
-	Type             mtypes.MediaType `json:"type"`
-	Text             string           `json:"text"`
-	MediaType        int              `json:"media_type"`
-	ReplyToMessageID string           `json:"reply_to_message_id"`
-	Edited           bool             `json:"edited"`
-	Forwarded        bool             `json:"forwarded"`
-	Reactions        []Reaction       `json:"reactions"`
-	// Info provides compatibility with frontend that expects types.MessageInfo structure
-	Info DecodedMessageInfo `json:"Info"`
-	// Content provides a minimal content structure for frontend rendering
-	Content *DecodedMessageContent `json:"Content"`
-}
-
-// DecodedMessageInfo is a simplified MessageInfo for frontend compatibility
-type DecodedMessageInfo struct {
-	ID        string `json:"ID"`
-	Timestamp string `json:"Timestamp"`
-	IsFromMe  bool   `json:"IsFromMe"`
-	PushName  string `json:"PushName"`
-	Sender    string `json:"Sender"`
-	Chat      string `json:"Chat"`
-}
-
-// DecodedMessageContent provides minimal content info for frontend rendering
-type DecodedMessageContent struct {
-	Conversation        string                  `json:"conversation,omitempty"`
-	ExtendedTextMessage *ExtendedTextContent    `json:"extendedTextMessage,omitempty"`
-	ImageMessage        *MediaMessageContent    `json:"imageMessage,omitempty"`
-	VideoMessage        *MediaMessageContent    `json:"videoMessage,omitempty"`
-	AudioMessage        *MediaMessageContent    `json:"audioMessage,omitempty"`
-	DocumentMessage     *DocumentMessageContent `json:"documentMessage,omitempty"`
-	StickerMessage      *MediaMessageContent    `json:"stickerMessage,omitempty"`
-}
-
-type ExtendedTextContent struct {
-	Text        string       `json:"text,omitempty"`
-	ContextInfo *ContextInfo `json:"contextInfo,omitempty"`
-}
-
-type MediaMessageContent struct {
-	Caption     string       `json:"caption,omitempty"`
-	Mimetype    string       `json:"mimetype,omitempty"`
-	ContextInfo *ContextInfo `json:"contextInfo,omitempty"`
-}
-
-type DocumentMessageContent struct {
-	Caption     string       `json:"caption,omitempty"`
-	FileName    string       `json:"fileName,omitempty"`
-	Mimetype    string       `json:"mimetype,omitempty"`
-	ContextInfo *ContextInfo `json:"contextInfo,omitempty"`
-}
-
-type ContextInfo struct {
-	StanzaID      string `json:"stanzaId,omitempty"`
-	Participant   string `json:"participant,omitempty"`
-	QuotedMessage any    `json:"quotedMessage,omitempty"`
-}
-
 // extractMessageContent extracts text, reply info, and media from a WhatsApp message
 func extractMessageContent(msg *waE2E.Message) (text, fileName, replyToMessageID string, forwarded bool, emc wa.ExtendedMediaContent, mediaType mtypes.MediaType, width, height int) {
 	switch {
@@ -995,22 +986,29 @@ func (ms *MessageStore) GetDecodedMessagesPaged(chatJID string, beforeTimestamp 
 	var messages []DecodedMessage
 
 	for rows.Next() {
-		var msg DecodedMessage
-		var replyTo sql.NullString
-		var text sql.NullString
-		var msgType sql.NullInt32
-		var fileName sql.NullString
+		var (
+			msgId             string
+			chatJid           string
+			senderJid         string
+			timestamp         int64
+			isFromMe          bool
+			text              sql.NullString
+			replyTo           sql.NullString
+			edited, forwarded bool
+			msgType           sql.NullInt32
+			fileName          sql.NullString
+		)
 
 		err := rows.Scan(
-			&msg.MessageID,
-			&msg.ChatJID,
-			&msg.SenderJID,
-			&msg.Timestamp,
-			&msg.IsFromMe,
+			&msgId,
+			&chatJid,
+			&senderJid,
+			&timestamp,
+			&isFromMe,
 			&text,
 			&replyTo,
-			&msg.Edited,
-			&msg.Forwarded,
+			&edited,
+			&forwarded,
 			&msgType,
 			&fileName,
 		)
@@ -1018,35 +1016,30 @@ func (ms *MessageStore) GetDecodedMessagesPaged(chatJID string, beforeTimestamp 
 			log.Println("Failed to scan decoded message:", err)
 			continue
 		}
-		msg.Type = mtypes.MediaType(msgType.Int32)
 
-		if text.Valid {
-			msg.Text = text.String
+		msg := DecodedMessage{
+			Type:             mtypes.MediaType(msgType.Int32),
+			ReplyToMessageID: replyTo.String,
+			Edited:           edited,
+			Forwarded:        forwarded,
+			Info: DecodedMessageInfo{
+				ID:        msgId,
+				Timestamp: time.Unix(timestamp, 0).Format(time.RFC3339),
+				IsFromMe:  isFromMe,
+				PushName:  "",
+				Sender:    senderJid,
+				Chat:      chatJid,
+			},
 		}
-		if replyTo.Valid {
-			msg.ReplyToMessageID = replyTo.String
-		}
-
-		msg.MediaType = int(msg.Type)
 
 		// Load reactions for this message
-		reactions, err := ms.GetReactionsByMessageID(msg.MessageID)
+		reactions, err := ms.GetReactionsByMessageID(msgId)
 		if err == nil {
 			msg.Reactions = reactions
 		}
 
-		// Populate Info for frontend compatibility
-		msg.Info = DecodedMessageInfo{
-			ID:        msg.MessageID,
-			Timestamp: time.Unix(msg.Timestamp, 0).Format(time.RFC3339),
-			IsFromMe:  msg.IsFromMe,
-			PushName:  "",
-			Sender:    msg.SenderJID,
-			Chat:      msg.ChatJID,
-		}
-
 		// Populate Content for frontend rendering
-		msg.Content = ms.buildDecodedContent(chatJID, msg.Text, msg.ReplyToMessageID, fileName.String, msg.Type)
+		msg.Content = ms.buildDecodedContent(chatJID, text.String, msg.ReplyToMessageID, fileName.String, msg.Type)
 
 		messages = append(messages, msg)
 	}
@@ -1070,7 +1063,7 @@ func (ms *MessageStore) buildDecodedContent(
 		if err == nil && quotedMsg != nil {
 			contextInfo = &ContextInfo{
 				StanzaID:      replyToMessageId,
-				Participant:   quotedMsg.SenderJID,
+				Participant:   quotedMsg.Info.Sender,
 				QuotedMessage: quotedMsg.Content,
 			}
 		} else {
@@ -1124,25 +1117,27 @@ func (ms *MessageStore) buildDecodedContent(
 
 // GetDecodedMessage returns a single decoded message from messages.db
 func (ms *MessageStore) GetDecodedMessage(chatJID string, messageID string) (*DecodedMessage, error) {
-	var msg DecodedMessage
-	var replyTo sql.NullString
-	var text sql.NullString
-	var msgType sql.NullInt32
-	var fileName sql.NullString
-
-	msg.ChatJID = chatJID
-	msg.MessageID = messageID
+	var (
+		sender            string
+		timestamp         int64
+		isFromMe          bool
+		replyTo           sql.NullString
+		edited, forwarded bool
+		text              sql.NullString
+		msgType           sql.NullInt32
+		fileName          sql.NullString
+	)
 
 	// Use runSync to ensure read consistency with pending writes
 	err := ms.runSync(func(tx *sql.Tx) error {
 		err := tx.QueryRow(query.SelectDecodedMessageByChatAndID, chatJID, messageID).Scan(
-			&msg.SenderJID,
-			&msg.Timestamp,
-			&msg.IsFromMe,
+			&sender,
+			&timestamp,
+			&isFromMe,
 			&text,
 			&replyTo,
-			&msg.Edited,
-			&msg.Forwarded,
+			&edited,
+			&forwarded,
 			&msgType,
 			&fileName,
 		)
@@ -1154,38 +1149,33 @@ func (ms *MessageStore) GetDecodedMessage(chatJID string, messageID string) (*De
 		return nil
 	})
 
-	msg.Type = mtypes.MediaType(msgType.Int32)
-
-	if text.Valid {
-		msg.Text = text.String
-	}
-	if replyTo.Valid {
-		msg.ReplyToMessageID = replyTo.String
-	}
-	msg.MediaType = int(msg.Type)
-
 	if err != nil {
 		return nil, err
 	}
 
+	msg := DecodedMessage{
+		Type:             mtypes.MediaType(msgType.Int32),
+		Edited:           edited,
+		Forwarded:        forwarded,
+		ReplyToMessageID: replyTo.String,
+		Info: DecodedMessageInfo{
+			ID:        messageID,
+			Timestamp: time.Unix(timestamp, 0).Format(time.RFC3339),
+			IsFromMe:  isFromMe,
+			PushName:  "",
+			Sender:    sender,
+			Chat:      chatJID,
+		},
+	}
+
 	// Load reactions outside transaction to avoid nested runSync
-	reactions, err := ms.GetReactionsByMessageID(msg.MessageID)
+	reactions, err := ms.GetReactionsByMessageID(messageID)
 	if err == nil {
 		msg.Reactions = reactions
 	}
 
-	// Populate Info for frontend compatibility
-	msg.Info = DecodedMessageInfo{
-		ID:        msg.MessageID,
-		Timestamp: time.Unix(msg.Timestamp, 0).Format(time.RFC3339),
-		IsFromMe:  msg.IsFromMe,
-		PushName:  "",
-		Sender:    msg.SenderJID,
-		Chat:      msg.ChatJID,
-	}
-
 	// Populate Content for frontend rendering
-	msg.Content = ms.buildDecodedContent(chatJID, msg.Text, msg.ReplyToMessageID, fileName.String, msg.Type)
+	msg.Content = ms.buildDecodedContent(chatJID, text.String, msg.ReplyToMessageID, fileName.String, msg.Type)
 
 	return &msg, nil
 }
@@ -1202,22 +1192,29 @@ func (ms *MessageStore) GetDecodedChatList() ([]DecodedMessage, error) {
 	var messages []DecodedMessage
 
 	for rows.Next() {
-		var msg DecodedMessage
-		var replyTo sql.NullString
-		var text sql.NullString
-		var msgType sql.NullInt32
-		var fileName sql.NullString
+		var (
+			messageId         string
+			chat              string
+			sender            string
+			timestamp         int64
+			isFromMe          bool
+			text              sql.NullString
+			replyTo           sql.NullString
+			edited, forwarded bool
+			msgType           sql.NullInt32
+			fileName          sql.NullString
+		)
 
 		err := rows.Scan(
-			&msg.MessageID,
-			&msg.ChatJID,
-			&msg.SenderJID,
-			&msg.Timestamp,
-			&msg.IsFromMe,
+			&messageId,
+			&chat,
+			&sender,
+			&timestamp,
+			&isFromMe,
 			&text,
 			&replyTo,
-			&msg.Edited,
-			&msg.Forwarded,
+			&edited,
+			&forwarded,
 			&msgType,
 			&fileName,
 		)
@@ -1226,30 +1223,23 @@ func (ms *MessageStore) GetDecodedChatList() ([]DecodedMessage, error) {
 			continue
 		}
 
-		msg.Type = mtypes.MediaType(msgType.Int32)
-
-		if text.Valid {
-			msg.Text = text.String
-		}
-
-		if replyTo.Valid {
-			msg.ReplyToMessageID = replyTo.String
-		}
-
-		msg.MediaType = int(msg.Type)
-
-		// Populate Info for frontend compatibility
-		msg.Info = DecodedMessageInfo{
-			ID:        msg.MessageID,
-			Timestamp: time.Unix(msg.Timestamp, 0).Format(time.RFC3339),
-			IsFromMe:  msg.IsFromMe,
-			PushName:  "",
-			Sender:    msg.SenderJID,
-			Chat:      msg.ChatJID,
+		msg := DecodedMessage{
+			Type:             mtypes.MediaType(msgType.Int32),
+			Edited:           edited,
+			Forwarded:        forwarded,
+			ReplyToMessageID: replyTo.String,
+			Info: DecodedMessageInfo{
+				ID:        messageId,
+				Timestamp: time.Unix(timestamp, 0).Format(time.RFC3339),
+				IsFromMe:  isFromMe,
+				PushName:  "",
+				Sender:    sender,
+				Chat:      chat,
+			},
 		}
 
 		// Populate Content for frontend rendering
-		msg.Content = ms.buildDecodedContent(msg.ChatJID, msg.Text, msg.ReplyToMessageID, fileName.String, msg.Type)
+		msg.Content = ms.buildDecodedContent(chat, text.String, msg.ReplyToMessageID, fileName.String, msg.Type)
 
 		messages = append(messages, msg)
 	}

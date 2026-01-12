@@ -100,8 +100,6 @@ func (a *Api) Login() error {
 func (a *Api) mainEventHandler(evt any) {
 	switch v := evt.(type) {
 	case *events.Message:
-		// buf, _ := json.Marshal(v)
-		// fmt.Println("[Event] Message:", string(buf))
 
 		parsedHTML := a.processMessageText(v.Message)
 
@@ -122,7 +120,7 @@ func (a *Api) mainEventHandler(evt any) {
 				runtime.EventsEmit(a.ctx, "wa:new_message", map[string]any{
 					"chatId":      v.Info.Chat.String(),
 					"message":     updatedMsg,
-					"messageText": updatedMsg.Text, // Text field contains HTML now, but better than nothing or we can use updatedMsg.Text
+					"messageText": parsedHTML, // Text field contains HTML now, but better than nothing or we can use updatedMsg.Text
 					"timestamp":   v.Info.Timestamp.Unix(),
 					"sender":      v.Info.PushName,
 				})
