@@ -10,6 +10,7 @@ import { MediaContent } from "./MediaContent"
 import { QuotedMessage } from "./QuotedMessage"
 import { ReactionBubble, ReactionDetails } from "./Reactions"
 import { LinkPreview } from "./LinkPreview"
+import { PollCard } from "./PollCard"
 import clsx from "clsx"
 import { MessageMenu } from "./MessageMenu"
 import {
@@ -252,6 +253,22 @@ export function MessageItem({
   const renderContent = () => {
     if (!content) return <span className="italic opacity-50">Empty Message</span>
     else if (content.conversation || content.extendedTextMessage?.text) {
+      // Structured poll data supersedes the static HTML card so polls can be
+      // voted on right from the app. Also never given Read more treatment.
+      if (message.poll) {
+        return (
+          <div className="flow-root">
+            <PollCard
+              pollName={message.poll.name}
+              options={message.poll.options}
+              selectableCount={message.poll.selectableCount}
+              messageId={message.Info.ID}
+              votes={message.poll.votes}
+            />
+            {timeMeta(true)}
+          </div>
+        )
+      }
       const htmlContent = content.conversation || content.extendedTextMessage?.text || ""
       const stripped = htmlContent
         .replace(/<[^>]*>/g, "")
