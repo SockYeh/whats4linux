@@ -44,7 +44,10 @@ export function PollCard({ pollName, options, selectableCount, messageId, votes 
     setError("")
     setSelected(nextSelection) // optimistic UI while the send is in flight
     try {
-      await SendPollVote(messageId, optionIndexes.map(i => options[i]))
+      await SendPollVote(
+        messageId,
+        optionIndexes.map(i => options[i]),
+      )
       setSelected(new Set(optionIndexes))
       setVoted(optionIndexes.length > 0)
     } catch (err) {
@@ -96,9 +99,7 @@ export function PollCard({ pollName, options, selectableCount, messageId, votes 
 
   return (
     <div className="w-full min-w-[240px]">
-      <div className="font-medium text-sm mb-0.5">
-        {pollName}
-      </div>
+      <div className="font-medium text-sm mb-0.5">{pollName}</div>
       <div className="text-xs text-black/40 dark:text-white/40 mb-1.5">
         {multiSelect ? "Select one or more" : "Select one"}
       </div>
@@ -154,7 +155,10 @@ export function PollCard({ pollName, options, selectableCount, messageId, votes 
               {showResults && (
                 <div className="relative z-[1] ml-6">
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
-                    <div className="h-full rounded-full bg-[#21c063]" style={{ width: `${percent}%` }} />
+                    <div
+                      className="h-full rounded-full bg-[#21c063]"
+                      style={{ width: `${percent}%` }}
+                    />
                   </div>
                 </div>
               )}

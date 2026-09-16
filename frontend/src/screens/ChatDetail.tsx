@@ -53,8 +53,15 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
     addPendingMessage,
     updatePendingMessageToSent,
   } = useMessageStore()
-  const { setTypingIndicator, showEmojiPicker, setShowEmojiPicker, chatInfoOpen, setChatInfoOpen, pollResultsFor, setPollResultsFor } =
-    useUIStore()
+  const {
+    setTypingIndicator,
+    showEmojiPicker,
+    setShowEmojiPicker,
+    chatInfoOpen,
+    setChatInfoOpen,
+    pollResultsFor,
+    setPollResultsFor,
+  } = useUIStore()
   const { chatsById } = useChatStore()
 
   const chatMessages = messages[chatId] || []
@@ -203,7 +210,16 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [chatInfoOpen, showEmojiPicker, replyingTo, onBack, setChatInfoOpen, setShowEmojiPicker, pollResultsFor, setPollResultsFor])
+  }, [
+    chatInfoOpen,
+    showEmojiPicker,
+    replyingTo,
+    onBack,
+    setChatInfoOpen,
+    setShowEmojiPicker,
+    pollResultsFor,
+    setPollResultsFor,
+  ])
 
   const activePoll =
     (pollResultsFor && chatMessages.find(m => m.Info?.ID === pollResultsFor)?.poll) || null

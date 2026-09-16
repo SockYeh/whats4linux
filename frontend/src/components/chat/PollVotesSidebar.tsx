@@ -16,7 +16,13 @@ interface PollVotesSidebarProps {
   chatType: string
 }
 
-export function PollVotesSidebar({ poll, isOpen, onClose, chatId, chatType }: PollVotesSidebarProps) {
+export function PollVotesSidebar({
+  poll,
+  isOpen,
+  onClose,
+  chatId,
+  chatType,
+}: PollVotesSidebarProps) {
   const [names, setNames] = useState<Record<string, string>>({})
   const [memberCount, setMemberCount] = useState(0)
   const votes = poll?.votes || []
@@ -70,9 +76,7 @@ export function PollVotesSidebar({ poll, isOpen, onClose, chatId, chatType }: Po
   const counts = poll.options.map(o => validVotes.filter(v => v.options.includes(o)).length)
   const maxCount = Math.max(0, ...counts)
   const winning = new Set(poll.options.filter((_, i) => counts[i] === maxCount && maxCount > 0))
-  const sortedIds = poll.options
-    .map((_, i) => i)
-    .sort((a, b) => counts[b] - counts[a])
+  const sortedIds = poll.options.map((_, i) => i).sort((a, b) => counts[b] - counts[a])
   const members = chatType === "group" ? memberCount : chatType === "contact" ? 2 : 0
 
   const displayName = (jid: string) => {
@@ -90,7 +94,12 @@ export function PollVotesSidebar({ poll, isOpen, onClose, chatId, chatType }: Po
           className="p-2 hover:bg-gray-200 dark:hover:bg-dark-tertiary rounded-full transition-colors mr-3"
           aria-label="Close"
         >
-          <svg viewBox="0 0 24 24" width="20" height="20" className="fill-current text-black/70 dark:text-white/70">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            className="fill-current text-black/70 dark:text-white/70"
+          >
             <path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
           </svg>
         </button>
@@ -147,7 +156,9 @@ export function PollVotesSidebar({ poll, isOpen, onClose, chatId, chatType }: Po
                       ))}
                     </div>
                   ) : (
-                    <div className="text-xs text-black/30 dark:text-white/30 pl-1">No votes yet</div>
+                    <div className="text-xs text-black/30 dark:text-white/30 pl-1">
+                      No votes yet
+                    </div>
                   )}
                 </div>
               )
@@ -170,7 +181,9 @@ function formatVoteTime(ts: number): string {
   const time24 = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })
   if (msgDay.getTime() === today.getTime()) return "Today at " + time24
   if (msgDay.getTime() === yesterday.getTime()) return "Yesterday at " + time24
-  return d.toLocaleDateString([], { day: "numeric", month: "numeric", year: "numeric" }) + " " + time24
+  return (
+    d.toLocaleDateString([], { day: "numeric", month: "numeric", year: "numeric" }) + " " + time24
+  )
 }
 
 function VoterRow({ jid, name, votedAt }: { jid: string; name: string; votedAt?: number }) {
