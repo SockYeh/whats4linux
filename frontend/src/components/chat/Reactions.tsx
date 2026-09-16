@@ -95,9 +95,7 @@ function ReactorRow({ jid }: ReactorRowProps) {
 
   const fallback =
     name ||
-    (jid === "me"
-      ? "You"
-      : formatPhone(phoneFromJID(jid)) || jid.split("@")[0].split(":")[0])
+    (jid === "me" ? "You" : formatPhone(phoneFromJID(jid)) || jid.split("@")[0].split(":")[0])
 
   return (
     <div className="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-tertiary">
