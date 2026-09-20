@@ -198,6 +198,9 @@ func NewMessageStore() (*MessageStore, error) {
 		if _, err = tx.Exec(query.CreateLinkPreviewsTable); err != nil {
 			return err
 		}
+		if _, err = tx.Exec(query.CreateCallHistoryTable); err != nil {
+			return err
+		}
 		// Add poster-download key columns to pre-existing link_previews tables.
 		for _, mig := range []string{
 			query.AddLinkPreviewDirectPath, query.AddLinkPreviewMediaKey,
