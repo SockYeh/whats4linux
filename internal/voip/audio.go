@@ -196,11 +196,15 @@ func openSpeaker(deviceID string) (meowcaller.AudioSink, error) {
 		mu  sync.Mutex
 		buf []float32
 	)
+	const maxBufFrames = meowcaller.SampleRate / 10 // 100 ms
 	done := make(chan struct{})
 	go func() {
 		for f := range in {
 			mu.Lock()
 			buf = append(buf, f...)
+			if len(buf) > maxBufFrames {
+				buf = buf[len(buf)-maxBufFrames:]
+			}
 			mu.Unlock()
 		}
 		close(done)
