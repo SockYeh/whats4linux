@@ -8,10 +8,10 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.48
 	github.com/nyaruka/phonenumbers v1.8.0
-	github.com/purpshell/meowcaller v0.0.0-20260906234207-c48c3e2a243c
+	github.com/purpshell/meowcaller v0.0.0
 	github.com/urfave/cli v1.22.17
 	github.com/wailsapp/wails/v2 v2.15.0
-	go.mau.fi/whatsmeow v0.0.0-20260616120636-eaa388b4e537
+	go.mau.fi/whatsmeow v0.0.0-20260722203353-e9a033b24933
 	golang.org/x/image v0.41.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -52,8 +52,6 @@ require (
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/polymorfa/hypermeow v0.0.0-20260906031440-90f9e4ec2c88 // indirect
-	github.com/polymorfa/libsignal-protocol-go v0.2.3-0.20260806162910-a2adef2e8a11 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -78,3 +76,6 @@ require (
 )
 
 // replace github.com/wailsapp/wails/v2 v2.11.0 => /home/celestix/go/pkg/mod
+
+// Pin the last meowcaller commit that still uses stock whatsmeow (27a3c6b).
+replace github.com/purpshell/meowcaller v0.0.0 => github.com/purpshell/meowcaller v0.0.0-20260811012811-27a3c6b18657

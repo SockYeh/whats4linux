@@ -6,6 +6,7 @@ import (
 	"math"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/gen2brain/malgo"
@@ -191,37 +192,11 @@ func openSpeaker(deviceID string) (meowcaller.AudioSink, error) {
 		cfg.Playback.DeviceID = unsafe.Pointer(&id)
 	}
 
-	in := make(chan []float32, 64)
-	var (
-		mu  sync.Mutex
-		buf []float32
-	)
-	const maxBufFrames = meowcaller.SampleRate / 10 // 100 ms
-	done := make(chan struct{})
-	go func() {
-		for f := range in {
-			mu.Lock()
-			buf = append(buf, f...)
-			if len(buf) > maxBufFrames {
-				buf = buf[len(buf)-maxBufFrames:]
-			}
-			mu.Unlock()
-		}
-		close(done)
-	}()
-
+	s := &speakerSink{ctx: ctx, pinner: &pinner, ring: newPCMRing(playoutSamples)}
 	onData := func(out, _ []byte, count uint32) {
 		need := int(count)
-		mu.Lock()
-		n := min(need, len(buf))
-		for i := range n {
-			binary.LittleEndian.PutUint32(out[i*4:], math.Float32bits(buf[i]))
-		}
-		buf = buf[n:]
-		mu.Unlock()
-		for i := n * 4; i < need*4; i++ {
-			out[i] = 0
-		}
+		n := s.ring.read(out, need)
+		clear(out[n*4 : need*4])
 	}
 
 	dev, err := malgo.InitDevice(ctx.Context, cfg, malgo.DeviceCallbacks{Data: onData})
@@ -238,29 +213,33 @@ func openSpeaker(deviceID string) (meowcaller.AudioSink, error) {
 		ctx.Free()
 		return nil, err
 	}
-	return &speakerSink{ctx: ctx, dev: dev, in: in, done: done, pinner: &pinner}, nil
+	s.dev = dev
+	return s, nil
 }
+
+// ~128 ms at 16 kHz; power of two so wrap is a mask.
+const playoutSamples = 2048
 
 type speakerSink struct {
 	ctx    *malgo.AllocatedContext
 	dev    *malgo.Device
-	in     chan []float32
-	done   chan struct{}
 	pinner *runtime.Pinner
+	ring   pcmRing
+	closed atomic.Bool
 	once   sync.Once
 }
 
 func (s *speakerSink) WriteFrame(frame []float32) error {
-	f := make([]float32, len(frame))
-	copy(f, frame)
-	s.in <- f
+	if s.closed.Load() {
+		return nil
+	}
+	s.ring.write(frame)
 	return nil
 }
 
 func (s *speakerSink) Close() error {
 	s.once.Do(func() {
-		close(s.in)
-		<-s.done
+		s.closed.Store(true)
 		_ = s.dev.Stop()
 		s.dev.Uninit()
 		_ = s.ctx.Uninit()
@@ -270,4 +249,49 @@ func (s *speakerSink) Close() error {
 		}
 	})
 	return nil
+}
+
+// pcmRing: one writer (WriteFrame), one reader (malgo). Full → drop this frame.
+type pcmRing struct {
+	buf     []float32
+	mask    uint32
+	in, out atomic.Uint32
+}
+
+func newPCMRing(n int) pcmRing {
+	size := 1
+	for size < n {
+		size *= 2
+	}
+	return pcmRing{buf: make([]float32, size), mask: uint32(size - 1)}
+}
+
+func (r *pcmRing) used(in, out uint32) int {
+	n := in - out
+	if n > uint32(len(r.buf)) {
+		return len(r.buf)
+	}
+	return int(n)
+}
+
+func (r *pcmRing) write(src []float32) {
+	in := r.in.Load()
+	if len(src) > len(r.buf)-r.used(in, r.out.Load()) {
+		return
+	}
+	start := int(in & r.mask)
+	n := copy(r.buf[start:], src)
+	copy(r.buf, src[n:])
+	r.in.Store(in + uint32(len(src)))
+}
+
+func (r *pcmRing) read(dst []byte, want int) int {
+	out := r.out.Load()
+	n := min(want, len(dst)/4, r.used(r.in.Load(), out))
+	for i := range n {
+		v := r.buf[(out+uint32(i))&r.mask]
+		binary.LittleEndian.PutUint32(dst[i*4:], math.Float32bits(v))
+	}
+	r.out.Store(out + uint32(n))
+	return n
 }
