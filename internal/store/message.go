@@ -858,6 +858,7 @@ func (ms *MessageStore) GetMessageWithMedia(chatJID string, messageID string) (*
 			mimetype.String,
 			width, height,
 			mtypes.MediaType(mediaType),
+			fileName.String,
 		)
 	}
 
@@ -924,6 +925,7 @@ func (ms *MessageStore) GetMessageWithMediaByID(messageID string) (*ExtendedMess
 			fileSHA256    []byte
 			fileEncSHA256 []byte
 			width, height int
+			fileName      sql.NullString
 		)
 		err = ms.db.QueryRow(query.SelectMessageMediaByMessageID, messageID).Scan(
 			&mediaType,
@@ -935,6 +937,7 @@ func (ms *MessageStore) GetMessageWithMediaByID(messageID string) (*ExtendedMess
 			&fileEncSHA256,
 			&width,
 			&height,
+			&fileName,
 		)
 		if err != nil {
 			return nil, err
@@ -946,6 +949,7 @@ func (ms *MessageStore) GetMessageWithMediaByID(messageID string) (*ExtendedMess
 			mimetype.String,
 			width, height,
 			mtypes.MediaType(mediaType),
+			fileName.String,
 		)
 	}
 
@@ -1603,6 +1607,13 @@ func (ms *MessageStore) GetThumbnail(messageID string) []byte {
 	return thumb
 }
 
+func (ms *MessageStore) CacheThumbnail(messageID string, data []byte) error {
+	return ms.runSync(func(tx *sql.Tx) error {
+		_, err := tx.Exec(query.UpdateThumbnailByMessageID, data, messageID)
+		return err
+	})
+}
+
 // LinkPreview is the stored preview for a URL in a text message.
 type LinkPreview struct {
 	URL         string
@@ -1645,8 +1656,11 @@ func (ms *MessageStore) GetLinkPreviewMedia(messageID string) *LinkPreviewMedia 
 }
 
 // CacheLinkPreviewThumbnail stores a downloaded poster so it's only fetched once.
-func (ms *MessageStore) CacheLinkPreviewThumbnail(messageID string, data []byte) {
-	_, _ = ms.db.Exec(query.UpdateLinkPreviewThumbnail, data, messageID)
+func (ms *MessageStore) CacheLinkPreviewThumbnail(messageID string, data []byte) error {
+	return ms.runSync(func(tx *sql.Tx) error {
+		_, err := tx.Exec(query.UpdateLinkPreviewThumbnail, data, messageID)
+		return err
+	})
 }
 
 // GetDecodedMessage returns a single decoded message from messages.db

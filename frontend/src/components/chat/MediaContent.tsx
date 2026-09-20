@@ -1,6 +1,12 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { store } from "../../../wailsjs/go/models"
-import { GetCachedImage, DownloadMedia, GetVideoThumbnail } from "../../../wailsjs/go/api/Api"
+import {
+  GetCachedImage,
+  GetCachedImages,
+  DownloadMedia,
+  GetVideoThumbnail,
+  GetImageThumbnail,
+} from "../../../wailsjs/go/api/Api"
 import { useUIStore } from "../../store"
 import { LRUCache } from "../../lib/lruCache"
 
@@ -21,7 +27,10 @@ const MEDIA_MAX_H = 400
 // lifetime of the process.
 const imagePathCache = new LRUCache<string, string>(48, 32 * 1024 * 1024, value => value.length)
 const videoThumbCache = new LRUCache<string, string>(100, 16 * 1024 * 1024, value => value.length)
+const imageThumbCache = new LRUCache<string, string>(100, 8 * 1024 * 1024, value => value.length)
 const mediaRequests = new Map<string, Promise<string>>()
+const THUMB_MISS = "__miss__"
+const PRELOAD_BATCH_LIMIT = 8
 
 function loadMediaOnce(key: string, loader: () => Promise<string>): Promise<string> {
   const existing = mediaRequests.get(key)
@@ -31,6 +40,88 @@ function loadMediaOnce(key: string, loader: () => Promise<string>): Promise<stri
   })
   mediaRequests.set(key, request)
   return request
+}
+
+const pendingPreload = new Set<string>()
+const preloadWaiters = new Map<string, { promise: Promise<void>; resolve: () => void }>()
+let preloadInFlight = false
+
+function waiterFor(id: string): Promise<void> {
+  const existing = preloadWaiters.get(id)
+  if (existing) return existing.promise
+  let resolve = () => {}
+  const promise = new Promise<void>(r => {
+    resolve = r
+  })
+  preloadWaiters.set(id, { promise, resolve })
+  return promise
+}
+
+function resolveWaiter(id: string) {
+  const waiter = preloadWaiters.get(id)
+  if (!waiter) return
+  waiter.resolve()
+  preloadWaiters.delete(id)
+}
+
+type PreloadMessage = {
+  Info?: { ID?: string }
+  Content?: { imageMessage?: unknown; stickerMessage?: unknown }
+}
+
+export function imageMediaIDs(messages: PreloadMessage[]): string[] {
+  const ids: string[] = []
+  for (const message of messages) {
+    if (!message.Content?.imageMessage && !message.Content?.stickerMessage) continue
+    const id = message.Info?.ID
+    if (id && !id.startsWith("temp-")) ids.push(id)
+  }
+  return ids
+}
+
+export function visibleImageIDs(messages: PreloadMessage[], limit = PRELOAD_BATCH_LIMIT): string[] {
+  const ids = imageMediaIDs(messages)
+  return ids.length <= limit ? ids : ids.slice(-limit)
+}
+
+export function preloadImages(ids: string[]) {
+  if (ids.length === 0) return
+  for (const id of ids) {
+    if (!id || imagePathCache.has(id)) continue
+    pendingPreload.add(id)
+    waiterFor(id)
+  }
+  pumpPreload()
+}
+
+function pumpPreload() {
+  if (preloadInFlight) return
+  const batch: string[] = []
+  for (const id of pendingPreload) {
+    if (imagePathCache.has(id)) {
+      pendingPreload.delete(id)
+      resolveWaiter(id)
+      continue
+    }
+    batch.push(id)
+    pendingPreload.delete(id)
+    if (batch.length >= PRELOAD_BATCH_LIMIT) break
+  }
+  if (batch.length === 0) return
+
+  preloadInFlight = true
+  void GetCachedImages(batch)
+    .then(map => {
+      for (const [id, dataUrl] of Object.entries(map)) {
+        if (dataUrl) imagePathCache.set(id, dataUrl)
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      for (const id of batch) resolveWaiter(id)
+      preloadInFlight = false
+      pumpPreload()
+    })
 }
 
 // Fallback box for GIF videos whose dimensions were never stored (rows synced
@@ -88,11 +179,16 @@ export function MediaContent({
   const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(
     () => videoThumbCache.get(message.Info.ID) ?? null,
   )
+  const [imageThumbnailSrc, setImageThumbnailSrc] = useState<string | null>(() => {
+    const cached = imageThumbCache.get(message.Info.ID)
+    return cached && cached !== THUMB_MISS ? cached : null
+  })
   const loadingRef = useRef(false)
   const mountedRef = useRef(true)
   const gifLoopsRef = useRef(0)
   const placeholderRef = useRef<HTMLDivElement | null>(null)
   const openLightbox = useUIStore(s => s.openLightbox)
+  const handleDownloadRef = useRef<(() => Promise<string | null>) | null>(null)
 
   // Reserve the final layout box before the media loads. Only images and GIF
   // videos swap a placeholder for an inline element, so only they can shift.
@@ -103,30 +199,54 @@ export function MediaContent({
         (type === "image" ? IMAGE_FALLBACK_BOX : GIF_FALLBACK_BOX))
       : null
 
-  const handleDownload = async () => {
-    if (loadingRef.current) return
+  const handleDownload = useCallback(async (): Promise<string | null> => {
+    if (type === "image" || type === "sticker") {
+      const cached = imagePathCache.get(message.Info.ID)
+      if (cached) {
+        if (mountedRef.current) setMediaSrc(cached)
+        return cached
+      }
+      const pending = preloadWaiters.get(message.Info.ID)?.promise
+      if (pending) await pending
+      const afterBatch = imagePathCache.get(message.Info.ID)
+      if (afterBatch) {
+        if (mountedRef.current) setMediaSrc(afterBatch)
+        return afterBatch
+      }
+    }
+    if (loadingRef.current) return null
     loadingRef.current = true
     setLoading(true)
     try {
-      const dataUrl =
-        type === "image" || type === "sticker"
-          ? await loadMediaOnce(`image:${message.Info.ID}`, () => GetCachedImage(message.Info.ID))
-          : await loadMediaOnce(`media:${chatId}:${message.Info.ID}`, () =>
-              DownloadMedia(chatId, message.Info.ID),
-            )
+      let dataUrl: string
+      if (type === "image" || type === "sticker") {
+        dataUrl = await loadMediaOnce(`image:${message.Info.ID}`, () =>
+          GetCachedImage(message.Info.ID),
+        )
+      } else {
+        dataUrl = await loadMediaOnce(`media:${chatId}:${message.Info.ID}`, () =>
+          DownloadMedia(chatId, message.Info.ID),
+        )
+      }
       if (dataUrl) {
         if (type === "image" || type === "sticker" || isGif) {
           imagePathCache.set(message.Info.ID, dataUrl)
         }
         if (mountedRef.current) setMediaSrc(dataUrl)
+        return dataUrl
       }
+      return null
     } catch {
-      // Keep the download affordance available for a retry.
+      return null
     } finally {
       loadingRef.current = false
       if (mountedRef.current) setLoading(false)
     }
-  }
+  }, [type, chatId, isGif, message.Info.ID])
+
+  useEffect(() => {
+    handleDownloadRef.current = handleDownload
+  }, [handleDownload])
 
   // Regular videos play full-screen in the lightbox (keeps the chat thumbnail).
   // The downloaded data URL is cached in a ref so reopening doesn't re-download.
@@ -180,17 +300,46 @@ export function MediaContent({
 
   // Auto-download image/sticker media once it's visible on screen — covers both
   // "already visible when the chat opens" and "scrolled into view". Debounced so
-  // rows blazed past during a fast scroll don't fetch.
+  // rows blazed past during a fast scroll don't fetch. Thumbnails share the same
+  // observer so off-screen rows don't hit SQLite on every remount.
   useEffect(() => {
     const autoLoads = type === "image" || type === "sticker" || (type === "video" && isGif)
-    if (mediaSrc || !autoLoads) return
+    const id = message.Info.ID
+    const wantsThumb =
+      type === "image" &&
+      !mediaSrc &&
+      !imageThumbnailSrc &&
+      !id.startsWith("temp-") &&
+      !imageThumbCache.has(id)
+    if (mediaSrc || (!autoLoads && !wantsThumb)) return
     const el = placeholderRef.current
     if (!el) return
     let timer: ReturnType<typeof setTimeout> | undefined
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          timer = setTimeout(() => void handleDownload(), 200)
+          timer = setTimeout(() => {
+            if (
+              type === "image" &&
+              !id.startsWith("temp-") &&
+              !imageThumbCache.has(id) &&
+              !imagePathCache.has(id)
+            ) {
+              void loadMediaOnce(`thumb:${id}`, async () => {
+                try {
+                  const url = await GetImageThumbnail(id)
+                  imageThumbCache.set(id, url || THUMB_MISS)
+                  return url || THUMB_MISS
+                } catch {
+                  imageThumbCache.set(id, THUMB_MISS)
+                  return THUMB_MISS
+                }
+              }).then(url => {
+                if (url && url !== THUMB_MISS && mountedRef.current) setImageThumbnailSrc(url)
+              })
+            }
+            if (autoLoads) void handleDownloadRef.current?.()
+          }, 200)
         } else if (timer) {
           clearTimeout(timer)
           timer = undefined
@@ -203,8 +352,7 @@ export function MediaContent({
       obs.disconnect()
       if (timer) clearTimeout(timer)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaSrc, type, isGif, message.Info.ID])
+  }, [mediaSrc, type, isGif, message.Info.ID, imageThumbnailSrc])
 
   // Fetch the embedded preview for regular videos so the list shows a thumbnail
   // + play button without downloading the whole video. (GIFs auto-play instead.)
@@ -237,7 +385,7 @@ export function MediaContent({
       return (
         <div
           className="relative inline-block"
-          onMouseEnter={() => type === "image" && setShowDownloadButton(true)}
+          onMouseEnter={() => setShowDownloadButton(true)}
           onMouseLeave={() => setShowDownloadButton(false)}
         >
           <img
@@ -245,20 +393,16 @@ export function MediaContent({
             className={
               type === "image"
                 ? "block min-w-75 max-w-82.5 max-h-100 object-cover rounded-lg cursor-pointer"
-                : "object-contain w-48.75 h-48.75"
+                : "object-contain w-48.75 h-48.75 cursor-pointer"
             }
             // Same explicit box as the placeholder -> zero layout shift.
             style={type === "image" ? (reservedBox ?? undefined) : undefined}
             decoding="async"
             alt="media"
-            onClick={
-              type === "image"
-                ? () => {
-                    onImageClick?.(mediaSrc)
-                    openLightbox(mediaSrc)
-                  }
-                : undefined
-            }
+            onClick={() => {
+              onImageClick?.(mediaSrc)
+              openLightbox(mediaSrc)
+            }}
           />
           {type === "image" && showDownloadButton && onDownload && (
             <button
@@ -306,6 +450,47 @@ export function MediaContent({
         <video src={mediaSrc} controls className="block w-64 h-64 rounded-lg object-cover" />
       )
     if (type === "audio") return <audio src={mediaSrc} controls className="w-75 h-14" />
+  }
+
+  if (type === "image" && imageThumbnailSrc) {
+    return (
+      <div
+        ref={placeholderRef}
+        className="relative w-64 h-64 bg-gray-200 dark:bg-gray-800 rounded-lg flex items-center justify-center overflow-hidden"
+        style={reservedBox ?? IMAGE_FALLBACK_BOX}
+        onMouseEnter={() => setShowDownloadButton(true)}
+        onMouseLeave={() => setShowDownloadButton(false)}
+      >
+        <img
+          src={imageThumbnailSrc}
+          className="w-full h-full object-cover rounded-lg"
+          decoding="async"
+          alt="media"
+          onClick={() => void handleDownload()}
+        />
+        {loading && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-lg">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+          </div>
+        )}
+        {showDownloadButton && onDownload && !loading && (
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              void handleDownload().then(url => {
+                if (url) onDownload()
+              })
+            }}
+            className="absolute top-2 right-2 p-2 bg-black/70 hover:bg-black/90 rounded-full text-white transition-colors"
+            title="Download image"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+            </svg>
+          </button>
+        )}
+      </div>
+    )
   }
 
   // Video placeholder: show the embedded thumbnail (if any) with a play button

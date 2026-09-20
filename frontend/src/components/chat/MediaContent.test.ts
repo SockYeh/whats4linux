@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { mediaBox } from "./MediaContent"
+import { mediaBox, imageMediaIDs, visibleImageIDs } from "./MediaContent"
 
 // Rendered bounds mirrored from MediaContent: min-w 300, max-w 330, max-h 400.
 describe("mediaBox", () => {
@@ -33,5 +33,26 @@ describe("mediaBox", () => {
 
   it("leaves mid-size images within bounds untouched", () => {
     expect(mediaBox(320, 200)).toEqual({ width: 320, height: 200 })
+  })
+})
+
+describe("imageMediaIDs", () => {
+  it("keeps image and sticker ids and drops temp rows", () => {
+    expect(
+      imageMediaIDs([
+        { Info: { ID: "img-1" }, Content: { imageMessage: {} } },
+        { Info: { ID: "txt-1" }, Content: {} },
+        { Info: { ID: "stk-1" }, Content: { stickerMessage: {} } },
+        { Info: { ID: "temp-1" }, Content: { imageMessage: {} } },
+      ]),
+    ).toEqual(["img-1", "stk-1"])
+  })
+
+  it("takes the last N image ids for the visible page", () => {
+    const messages = Array.from({ length: 12 }, (_, i) => ({
+      Info: { ID: `img-${i}` },
+      Content: { imageMessage: {} },
+    }))
+    expect(visibleImageIDs(messages, 8)).toEqual(messages.slice(-8).map(message => message.Info.ID))
   })
 })
