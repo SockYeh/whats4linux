@@ -253,7 +253,13 @@ func (m *Manager) watch(call *meowcaller.Call) {
 		log.Printf("voip: call %s ended: %s", call.ID(), reason)
 		m.mu.Lock()
 		hist := m.history
+		var oldMic meowcaller.AudioSource
+		var oldSpeaker meowcaller.AudioSink
+		var oldPlayer *meowcaller.Player
 		if m.call == call {
+			oldPlayer = m.player
+			oldMic = m.mic
+			oldSpeaker = m.speaker
 			m.call = nil
 			m.player = nil
 			m.mic = nil
@@ -262,6 +268,15 @@ func (m *Manager) watch(call *meowcaller.Call) {
 			m.chatJID = ""
 		}
 		m.mu.Unlock()
+		if oldPlayer != nil {
+			oldPlayer.Stop()
+		}
+		if oldMic != nil {
+			_ = oldMic.Close()
+		}
+		if oldSpeaker != nil {
+			_ = oldSpeaker.Close()
+		}
 		if hist != nil {
 			hist.CallEnded(call.ID(), "ended", reason, time.Now().Unix())
 		}
