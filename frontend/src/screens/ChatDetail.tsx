@@ -8,6 +8,7 @@ import {
   GetProfile,
   MarkRead,
 } from "../../wailsjs/go/api/Api"
+import { preloadImages, visibleImageIDs } from "../components/chat/MediaContent"
 import { store } from "../../wailsjs/go/models"
 import { EventsOn } from "../../wailsjs/runtime/runtime"
 import { useMessageStore, useUIStore, useChatStore } from "../store"
@@ -233,6 +234,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
           }
         }
         setMessages(chatId, merged)
+        preloadImages(visibleImageIDs(merged))
         const more = loadedMsgs.length >= PAGE_SIZE
         hasMoreRef.current = more
         setHasMore(more)
@@ -415,7 +417,14 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         },
       }
     } else if (fileToSend) {
-      if (fileTypeToSend === "image") {
+      if (fileTypeToSend === "sticker") {
+        pendingMessage.Content = {
+          stickerMessage: {
+            mimetype: fileToSend.type,
+            _tempFile: fileToSend,
+          },
+        }
+      } else if (fileTypeToSend === "image") {
         pendingMessage.Content = {
           imageMessage: {
             caption: textToSend || "",
@@ -477,6 +486,8 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
         pendingMessage.Content.audioMessage.contextInfo = contextInfo
       } else if (pendingMessage.Content.documentMessage) {
         pendingMessage.Content.documentMessage.contextInfo = contextInfo
+      } else if (pendingMessage.Content.stickerMessage) {
+        pendingMessage.Content.stickerMessage.contextInfo = contextInfo
       }
     }
 
@@ -612,7 +623,12 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
             const pendingMessages = currentMessages.filter((m: any) => m.isPending)
             const pending = pendingMessages.find((m: any) => m.tempId === data.clientTempId)
             if (pending) {
-              for (const body of ["imageMessage", "videoMessage", "audioMessage"]) {
+              for (const body of [
+                "imageMessage",
+                "videoMessage",
+                "audioMessage",
+                "stickerMessage",
+              ]) {
                 const transient =
                   pending.Content?.[body]?._tempImage || pending.Content?.[body]?._tempFile
                 if (transient && data.message.Content?.[body]) {
@@ -807,6 +823,7 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
             setSelectedFile(null)
             setPastedImage(null)
           }}
+          onFileTypeChange={setSelectedFileType}
           onEmojiClick={emoji => {
             setInputText(prev => prev + emoji)
             setShowEmojiPicker(false)

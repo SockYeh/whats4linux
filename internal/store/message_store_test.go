@@ -199,3 +199,45 @@ func TestRunSyncReturnsBeginFailureWithoutBlocking(t *testing.T) {
 		t.Fatal("runSync blocked after transaction begin failed")
 	}
 }
+
+func TestInsertMessageMediaPreservesGeneratedThumbnail(t *testing.T) {
+	ms := newTestMessageStore(t)
+	const id = "img-1"
+	insertTestMessage(t, ms, id, "123@s.whatsapp.net", 1, "")
+
+	err := ms.runSync(func(tx *sql.Tx) error {
+		_, err := tx.Exec(query.InsertMessageMedia, id, 1, "", "image/jpeg", "", nil, nil, nil, 10, 10, "", 0, []byte("generated"))
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ms.runSync(func(tx *sql.Tx) error {
+		_, err := tx.Exec(query.InsertMessageMedia, id, 1, "https://example", "image/jpeg", "/p", nil, nil, nil, 12, 12, "", 0, nil)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(ms.GetThumbnail(id)); got != "generated" {
+		t.Fatalf("thumbnail = %q, want generated", got)
+	}
+}
+
+func TestCacheThumbnailUsesWriter(t *testing.T) {
+	ms := newTestMessageStore(t)
+	const id = "img-2"
+	insertTestMessage(t, ms, id, "123@s.whatsapp.net", 1, "")
+	if err := ms.runSync(func(tx *sql.Tx) error {
+		_, err := tx.Exec(query.InsertMessageMedia, id, 1, "", "image/jpeg", "", nil, nil, nil, 10, 10, "", 0, nil)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.CacheThumbnail(id, []byte("thumb")); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(ms.GetThumbnail(id)); got != "thumb" {
+		t.Fatalf("thumbnail = %q, want thumb", got)
+	}
+}

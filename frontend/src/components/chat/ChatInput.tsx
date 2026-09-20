@@ -33,6 +33,7 @@ interface ChatInputProps {
   onSendMessage: () => void
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
   onRemoveFile: () => void
+  onFileTypeChange?: (fileType: string) => void
   onEmojiClick: (emoji: string) => void
   onToggleEmojiPicker: () => void
   onCancelReply: () => void
@@ -45,6 +46,7 @@ const FILE_TYPE_ICONS = {
   video: "🎥",
   audio: "🎵",
   document: "📄",
+  sticker: "🏷️",
 } as const
 
 interface IconButtonProps {
@@ -72,9 +74,10 @@ interface FilePreviewProps {
   file: File
   fileType: string
   onRemove: () => void
+  onFileTypeChange?: (fileType: string) => void
 }
 
-const FilePreview = ({ file, fileType, onRemove }: FilePreviewProps) => (
+const FilePreview = ({ file, fileType, onRemove, onFileTypeChange }: FilePreviewProps) => (
   <div className="mb-2 flex items-center rounded-xl gap-2 bg-gray-100 dark:bg-gray-700 p-2 rounded-lg">
     <div className="flex-1">
       <div className="flex items-center gap-2">
@@ -82,6 +85,15 @@ const FilePreview = ({ file, fileType, onRemove }: FilePreviewProps) => (
         <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{file.name}</span>
       </div>
       <span className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</span>
+      {file.type === "image/webp" && onFileTypeChange && (
+        <button
+          type="button"
+          onClick={() => onFileTypeChange(fileType === "sticker" ? "image" : "sticker")}
+          className="mt-1 text-xs text-green-600 dark:text-green-400 hover:underline"
+        >
+          {fileType === "sticker" ? "Send as image" : "Send as sticker"}
+        </button>
+      )}
     </div>
     <button onClick={onRemove} className="text-red-500 hover:text-red-600 p-1" title="Remove file">
       ×
@@ -130,6 +142,7 @@ export function ChatInput({
   onSendMessage,
   onFileSelect,
   onRemoveFile,
+  onFileTypeChange,
   onEmojiClick,
   onToggleEmojiPicker,
   onCancelReply,
@@ -401,7 +414,12 @@ export function ChatInput({
         <div className="mb-2 rounded-xl border border-gray-200 bg-light-bg p-2 dark:border-transparent dark:bg-[#242626]">
           {pastedImage && <ImagePreview imageSrc={pastedImage} onRemove={onRemoveFile} />}
           {selectedFile && (
-            <FilePreview file={selectedFile} fileType={selectedFileType} onRemove={onRemoveFile} />
+            <FilePreview
+              file={selectedFile}
+              fileType={selectedFileType}
+              onRemove={onRemoveFile}
+              onFileTypeChange={onFileTypeChange}
+            />
           )}
           {renderReplyPreview()}
         </div>

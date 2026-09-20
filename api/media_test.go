@@ -92,4 +92,17 @@ func TestMediaMethodsHandleUninitialisedAPI(t *testing.T) {
 	if _, err := a.GetCachedAvatar("123@s.whatsapp.net", false); err == nil {
 		t.Fatal("GetCachedAvatar returned no error without an image cache")
 	}
+	if a.GetImageThumbnail("message") != "" {
+		t.Fatal("GetImageThumbnail returned data without a message store")
+	}
+}
+
+func TestGetCachedImageRejectsNonImageCacheEntry(t *testing.T) {
+	a := newMediaTestAPI(t)
+	if _, err := a.imageCache.SaveImage("doc-1", []byte("%PDF-1.4 hello"), "application/pdf", 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.GetCachedImage("doc-1"); err == nil {
+		t.Fatal("GetCachedImage accepted a cached PDF")
+	}
 }

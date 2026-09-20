@@ -272,7 +272,14 @@ export function MessageItem({
         />
       )
     else if (content.stickerMessage)
-      return <MediaContent message={message} type="sticker" chatId={chatId} />
+      return (
+        <MediaContent
+          message={message}
+          type="sticker"
+          chatId={chatId}
+          sentMediaCache={sentMediaCache}
+        />
+      )
     else if (content.documentMessage) {
       const doc = content.documentMessage
       const fileName = doc.fileName || "Document"

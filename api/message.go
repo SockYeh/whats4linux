@@ -439,6 +439,9 @@ func (a *Api) SendMessage(chatJID string, content MessageContent) (string, error
 		stickerMsg := &waE2E.StickerMessage{
 			Mimetype: &mimeType,
 		}
+		if contextInfo != nil {
+			stickerMsg.ContextInfo = contextInfo
+		}
 
 		// Upload the sticker
 		uploaded, err := a.waClient.Upload(a.ctx, stickerData, whatsmeow.MediaImage) // Stickers use MediaImage
