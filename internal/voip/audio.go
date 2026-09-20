@@ -3,6 +3,7 @@ package voip
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -89,7 +90,7 @@ func openMic(deviceID string) (meowcaller.AudioSource, error) {
 	}
 
 	cfg := malgo.DefaultDeviceConfig(malgo.Capture)
-	cfg.Capture.Format = malgo.FormatS16
+	cfg.Capture.Format = malgo.FormatF32
 	cfg.Capture.Channels = numChannels
 	cfg.SampleRate = meowcaller.SampleRate
 	cfg.Alsa.NoMMap = 1
@@ -105,14 +106,14 @@ func openMic(deviceID string) (meowcaller.AudioSource, error) {
 		cfg.Capture.DeviceID = unsafe.Pointer(&id)
 	}
 
-	frames := make(chan []int16, 16)
-	var acc []int16
+	frames := make(chan []float32, 16)
+	var acc []float32
 	onData := func(_, in []byte, _ uint32) {
-		for i := 0; i+1 < len(in); i += 2 {
-			acc = append(acc, int16(binary.LittleEndian.Uint16(in[i:])))
+		for i := 0; i+3 < len(in); i += 4 {
+			acc = append(acc, math.Float32frombits(binary.LittleEndian.Uint32(in[i:])))
 		}
 		for len(acc) >= meowcaller.FrameSamples {
-			f := make([]int16, meowcaller.FrameSamples)
+			f := make([]float32, meowcaller.FrameSamples)
 			copy(f, acc[:meowcaller.FrameSamples])
 			acc = acc[meowcaller.FrameSamples:]
 			select {
@@ -142,17 +143,17 @@ func openMic(deviceID string) (meowcaller.AudioSource, error) {
 type micSource struct {
 	ctx    *malgo.AllocatedContext
 	dev    *malgo.Device
-	frames <-chan []int16
+	frames <-chan []float32
 	pinner *runtime.Pinner
 	once   sync.Once
 }
 
 func (m *micSource) ReadFrame() ([]float32, error) {
-	pcm, ok := <-m.frames
+	frame, ok := <-m.frames
 	if !ok {
 		return nil, nil
 	}
-	return pcmToFloat(pcm), nil
+	return frame, nil
 }
 
 func (m *micSource) Close() error {
@@ -175,7 +176,7 @@ func openSpeaker(deviceID string) (meowcaller.AudioSink, error) {
 	}
 
 	cfg := malgo.DefaultDeviceConfig(malgo.Playback)
-	cfg.Playback.Format = malgo.FormatS16
+	cfg.Playback.Format = malgo.FormatF32
 	cfg.Playback.Channels = numChannels
 	cfg.SampleRate = meowcaller.SampleRate
 	var pinner runtime.Pinner
@@ -190,10 +191,10 @@ func openSpeaker(deviceID string) (meowcaller.AudioSink, error) {
 		cfg.Playback.DeviceID = unsafe.Pointer(&id)
 	}
 
-	in := make(chan []int16, 64)
+	in := make(chan []float32, 64)
 	var (
 		mu  sync.Mutex
-		buf []int16
+		buf []float32
 	)
 	done := make(chan struct{})
 	go func() {
@@ -210,11 +211,11 @@ func openSpeaker(deviceID string) (meowcaller.AudioSink, error) {
 		mu.Lock()
 		n := min(need, len(buf))
 		for i := range n {
-			binary.LittleEndian.PutUint16(out[i*2:], uint16(buf[i]))
+			binary.LittleEndian.PutUint32(out[i*4:], math.Float32bits(buf[i]))
 		}
 		buf = buf[n:]
 		mu.Unlock()
-		for i := n * 2; i < need*2; i++ {
+		for i := n * 4; i < need*4; i++ {
 			out[i] = 0
 		}
 	}
@@ -239,14 +240,16 @@ func openSpeaker(deviceID string) (meowcaller.AudioSink, error) {
 type speakerSink struct {
 	ctx    *malgo.AllocatedContext
 	dev    *malgo.Device
-	in     chan []int16
+	in     chan []float32
 	done   chan struct{}
 	pinner *runtime.Pinner
 	once   sync.Once
 }
 
 func (s *speakerSink) WriteFrame(frame []float32) error {
-	s.in <- floatToPCM(frame)
+	f := make([]float32, len(frame))
+	copy(f, frame)
+	s.in <- f
 	return nil
 }
 
@@ -263,27 +266,4 @@ func (s *speakerSink) Close() error {
 		}
 	})
 	return nil
-}
-
-func pcmToFloat(pcm []int16) []float32 {
-	out := make([]float32, len(pcm))
-	for i, s := range pcm {
-		out[i] = float32(s) / 32768
-	}
-	return out
-}
-
-func floatToPCM(f []float32) []int16 {
-	out := make([]int16, len(f))
-	for i, s := range f {
-		v := s * 32768
-		switch {
-		case v > 32767:
-			v = 32767
-		case v < -32768:
-			v = -32768
-		}
-		out[i] = int16(v)
-	}
-	return out
 }
