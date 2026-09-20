@@ -27,6 +27,20 @@ export function phoneFromJID(jid: string): string {
   return jid.split("@")[0]
 }
 
+/** True for raw WhatsApp JIDs that should not be shown as a person's name. */
+export function isRawJID(value: string): boolean {
+  return /@(lid|s\.whatsapp\.net|g\.us|hosted\.lid)\b/i.test(value)
+}
+
+/** Prefer the chat-list / contact-store name; never fall back to a LID/JID. */
+export function displayCallName(chatName?: string, contactName?: string): string {
+  for (const candidate of [chatName, contactName]) {
+    const name = candidate?.trim()
+    if (name && !isRawJID(name)) return name
+  }
+  return "Call"
+}
+
 /**
  * WhatsApp default avatar / community placeholder pastels (light mode).
  * Soft backgrounds with a dark silhouette icon — matches current WA chat list.
