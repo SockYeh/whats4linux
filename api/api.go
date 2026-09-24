@@ -17,6 +17,7 @@ import (
 	"github.com/lugvitc/whats4linux/internal/misc"
 	"github.com/lugvitc/whats4linux/internal/settings"
 	"github.com/lugvitc/whats4linux/internal/store"
+	"github.com/lugvitc/whats4linux/internal/voip"
 	"github.com/lugvitc/whats4linux/internal/wa"
 	"github.com/lugvitc/whats4linux/shared/socket"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -35,6 +36,7 @@ type Api struct {
 	ctx                 context.Context
 	cw                  *wa.AppDatabase
 	waClient            *whatsmeow.Client
+	voip                *voip.Manager
 	messageStore        *store.MessageStore
 	imageCache          *cache.ImageCache
 	us                  *socket.UnixSocket
@@ -194,6 +196,9 @@ func (a *Api) Shutdown(ctx context.Context) {
 	a.lifecycleMu.Lock()
 	client := a.waClient
 	loginCancel := a.loginCancel
+	if a.voip != nil {
+		_ = a.voip.Hangup()
+	}
 	if client != nil && a.eventHandlerSet {
 		client.RemoveEventHandler(a.eventHandlerID)
 		a.eventHandlerSet = false
@@ -309,11 +314,14 @@ func (a *Api) Startup(ctx context.Context) {
 		return
 	}
 	a.waClient = wa.NewClient(ctx, container)
+	a.voip = voip.Attach(a.waClient)
+	a.voip.SetOnChange(a.emitCall)
 	a.messageStore, err = store.NewMessageStore()
 	if err != nil {
 		a.failStartup(fmt.Errorf("open message store: %w", err))
 		return
 	}
+	a.voip.SetHistory(a.messageStore)
 	a.imageCache, err = cache.NewImageCache()
 	if err != nil {
 		a.failStartup(fmt.Errorf("open image cache: %w", err))

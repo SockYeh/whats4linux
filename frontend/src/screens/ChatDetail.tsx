@@ -7,6 +7,7 @@ import {
   GetGroupInfo,
   GetProfile,
   MarkRead,
+  PlaceCall,
 } from "../../wailsjs/go/api/Api"
 import { preloadImages, visibleImageIDs } from "../components/chat/MediaContent"
 import { store } from "../../wailsjs/go/models"
@@ -678,6 +679,11 @@ export function ChatDetail({ chatId, chatName, chatAvatar, onBack }: ChatDetailP
           chatAvatar={chatAvatar}
           onBack={onBack}
           onInfoClick={() => setChatInfoOpen(!chatInfoOpen)}
+          onCallClick={
+            chatType === "contact"
+              ? () => PlaceCall(chatId).catch(err => console.error("place call failed:", err))
+              : undefined
+          }
         />
 
         {/* Pinned-messages banner: shows the latest pin, click cycles through
