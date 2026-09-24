@@ -31,9 +31,22 @@ const (
 	`
 
 	InsertMessageMedia = `
-	INSERT OR REPLACE INTO message_media
+	INSERT INTO message_media
 	(message_id, type, url, mimetype, direct_path, media_key, file_sha256, file_enc_sha256, width, height, file_name, gif_playback, thumbnail)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(message_id) DO UPDATE SET
+		type = excluded.type,
+		url = excluded.url,
+		mimetype = excluded.mimetype,
+		direct_path = excluded.direct_path,
+		media_key = excluded.media_key,
+		file_sha256 = excluded.file_sha256,
+		file_enc_sha256 = excluded.file_enc_sha256,
+		width = excluded.width,
+		height = excluded.height,
+		file_name = excluded.file_name,
+		gif_playback = excluded.gif_playback,
+		thumbnail = COALESCE(excluded.thumbnail, message_media.thumbnail);
 	`
 
 	SelectGifPlaybackByMessageID = `
@@ -58,5 +71,9 @@ const (
 	SELECT type, url, mimetype, direct_path, media_key, file_sha256, file_enc_sha256, width, height, file_name
 	FROM message_media
 	WHERE message_id = ?;
+	`
+
+	UpdateThumbnailByMessageID = `
+	UPDATE message_media SET thumbnail = ? WHERE message_id = ?;
 	`
 )

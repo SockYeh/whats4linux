@@ -78,6 +78,19 @@ function extractSettings(state: AppSettingsStore): AppSettings {
   return settings
 }
 
+// Backfill defaults into a stored eases object so groups/actions added in newer
+// builds (e.g. CallOverlay) keep working on existing installs.
+function mergeEases(saved?: AppSettings["eases"]): typeof DEFAULT_EASES {
+  const merged = {} as typeof DEFAULT_EASES
+  for (const [group, actions] of Object.entries(DEFAULT_EASES)) {
+    ;(merged as any)[group] = {
+      ...actions,
+      ...(saved?.[group as keyof typeof DEFAULT_EASES] ?? {}),
+    }
+  }
+  return merged
+}
+
 export const useAppSettingsStore = create<AppSettingsStore>((set, get) => ({
   ...defaultSettings,
   loaded: false,
@@ -90,6 +103,7 @@ export const useAppSettingsStore = create<AppSettingsStore>((set, get) => ({
         ...defaultSettings,
         ...(saved ?? {}),
       }
+      merged.eases = mergeEases(merged.eases)
       merged.theme = normalizeTheme(merged.theme)
 
       // Older builds shipped a black light-mode toggle knob (#000000) as the

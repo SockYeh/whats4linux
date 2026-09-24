@@ -3,6 +3,7 @@ import { gsap } from "gsap"
 import { CustomEase } from "gsap/CustomEase"
 import { PathEditor } from "gsap/utils/PathEditor"
 import { useEaseStore } from "../../store"
+import { getEase } from "../../store/useEaseStore"
 import ToggleButton from "./ToggleButton"
 import DropDown from "./DropDown"
 import { DEFAULT_EASES } from "../../theme.config"
@@ -31,7 +32,71 @@ const INITIAL_EASE_STRING = "M0,0,C0.126,0.382,0.282,0.674,0.44,0.822,0.632,1.00
 const COMPONENTS = {
   DropDown: ["open", "close", "rotate"],
   ToggleButton: ["slide"],
+  CallOverlay: ["open", "close"],
 } as const
+
+const CallOverlayPreview = () => {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const easeOpenRef = useRef(getEase("CallOverlay", "open"))
+  const easeCloseRef = useRef(getEase("CallOverlay", "close"))
+
+  useEffect(() => {
+    easeOpenRef.current = getEase("CallOverlay", "open")
+    easeCloseRef.current = getEase("CallOverlay", "close")
+  })
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    gsap.killTweensOf(el)
+    if (open) {
+      gsap.to(el, {
+        height: "auto",
+        opacity: 1,
+        duration: 0.3,
+        ease: easeOpenRef.current,
+        overwrite: "auto",
+      })
+    } else {
+      gsap.to(el, {
+        height: 0,
+        opacity: 0,
+        duration: 0.3,
+        ease: easeCloseRef.current,
+        overwrite: "auto",
+      })
+    }
+  }, [open])
+
+  return (
+    <div className="w-60 rounded-xl border border-black/20 bg-white p-3 text-left dark:border-white/10 dark:bg-[#1a1a1a]">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center justify-between text-sm font-medium text-gray-800 dark:text-gray-200"
+      >
+        <span>Audio devices</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      <div ref={ref} className="overflow-hidden" style={{ height: 0, opacity: 0 }}>
+        <div className="mt-2 border-t border-gray-100 pt-1 dark:border-white/5">
+          <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-gray-400">Output</div>
+          <div className="rounded-md px-2 py-1 text-xs text-gray-700 dark:text-gray-300">
+            Speakers
+          </div>
+          <div className="px-1 pb-1 pt-1 text-[10px] uppercase tracking-wide text-gray-400">
+            Input
+          </div>
+          <div className="rounded-md px-2 py-1 text-xs text-gray-700 dark:text-gray-300">
+            Microphone
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const GSAPMasterVisualizer = () => {
   const [component, setComponent] = useState<keyof typeof COMPONENTS | null>(null)
@@ -298,6 +363,7 @@ const GSAPMasterVisualizer = () => {
         {component === "DropDown" && (
           <DropDown title="Preview" elements={["Option 1", "Option 2"]} onToggle={() => {}} />
         )}
+        {component === "CallOverlay" && <CallOverlayPreview />}
       </div>
     </div>
   )

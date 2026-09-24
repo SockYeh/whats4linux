@@ -16,6 +16,7 @@ import { useSelfAvatarStore } from "../store/useSelfAvatarStore"
 import { useChatMuted } from "../store/useMuteStore"
 import type { ChatItem } from "../store/types"
 import { StatusList, StoryViewer, type StatusGroup } from "../components/chat/Status"
+import { CallOverlay, useActiveCall } from "../components/chat/CallOverlay"
 import { CommunityList, CommunityHome, CommunitiesWelcome } from "../components/chat/Communities"
 import {
   getAvatarColor,
@@ -632,6 +633,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
   }, [chatMenu])
 
   const [storyGroup, setStoryGroup] = useState<StatusGroup | null>(null)
+  const { call, active: callActive } = useActiveCall()
   const viewRef = useRef(view)
   viewRef.current = view
 
@@ -886,6 +888,7 @@ export function ChatListScreen({ onOpenSettings }: ChatListScreenProps) {
               ))
             )}
           </div>
+          {callActive && <CallOverlay call={call} />}
         </ResizablePanel>
         {storyGroup && <StoryViewer group={storyGroup} onClose={() => setStoryGroup(null)} />}
 

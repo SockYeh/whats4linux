@@ -24,6 +24,7 @@ type Media struct {
 	fileEncSHA256 []byte
 	url           string
 	mimetype      string
+	fileName      string
 	mediaType     types.MediaType
 	width, height int
 }
@@ -34,7 +35,7 @@ func NewMedia(
 	url, mimetype string,
 	width, height int,
 	mediaType types.MediaType,
-
+	fileName string,
 ) *Media {
 	return &Media{
 		directPath:    directPath,
@@ -43,6 +44,7 @@ func NewMedia(
 		fileEncSHA256: fileEncSHA256,
 		url:           url,
 		mimetype:      mimetype,
+		fileName:      fileName,
 		width:         width,
 		height:        height,
 		mediaType:     mediaType,
@@ -83,4 +85,8 @@ func (em *Media) GetMimetype() string {
 
 func (em *Media) GetDimensions() (width, height int) {
 	return em.width, em.height
+}
+
+func (em *Media) GetFileName() string {
+	return em.fileName
 }
