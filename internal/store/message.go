@@ -220,6 +220,8 @@ func NewMessageStore() (*MessageStore, error) {
 			return err
 		}
 		if _, err = tx.Exec(query.CreatePollVotesTable); err != nil {
+			return err
+		}
 		if _, err = tx.Exec(query.CreateCallHistoryTable); err != nil {
 			return err
 		}
