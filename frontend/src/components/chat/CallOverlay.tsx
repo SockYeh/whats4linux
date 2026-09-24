@@ -125,9 +125,7 @@ export function CallOverlay({ call }: Props) {
   const [devicesOpen, setDevicesOpen] = useState(false)
   const [inputs, setInputs] = useState<AudioDevice[]>([])
   const [outputs, setOutputs] = useState<AudioDevice[]>([])
-  const chat = useChatStore(
-    s => s.getChat(call.chat_jid || "") || s.getChat(call.peer || ""),
-  )
+  const chat = useChatStore(s => s.getChat(call.chat_jid || "") || s.getChat(call.peer || ""))
   const devicesRef = useRef<HTMLDivElement>(null)
 
   const easeOpenRef = useRef(getEase("CallOverlay", "open"))

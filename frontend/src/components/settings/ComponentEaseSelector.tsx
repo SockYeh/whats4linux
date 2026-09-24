@@ -82,9 +82,7 @@ const CallOverlayPreview = () => {
       </button>
       <div ref={ref} className="overflow-hidden" style={{ height: 0, opacity: 0 }}>
         <div className="mt-2 border-t border-gray-100 pt-1 dark:border-white/5">
-          <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-gray-400">
-            Output
-          </div>
+          <div className="px-1 pb-1 text-[10px] uppercase tracking-wide text-gray-400">Output</div>
           <div className="rounded-md px-2 py-1 text-xs text-gray-700 dark:text-gray-300">
             Speakers
           </div>

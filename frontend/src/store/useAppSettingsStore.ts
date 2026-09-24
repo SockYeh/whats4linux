@@ -83,7 +83,10 @@ function extractSettings(state: AppSettingsStore): AppSettings {
 function mergeEases(saved?: AppSettings["eases"]): typeof DEFAULT_EASES {
   const merged = {} as typeof DEFAULT_EASES
   for (const [group, actions] of Object.entries(DEFAULT_EASES)) {
-    ;(merged as any)[group] = { ...actions, ...(saved?.[group as keyof typeof DEFAULT_EASES] ?? {}) }
+    ;(merged as any)[group] = {
+      ...actions,
+      ...(saved?.[group as keyof typeof DEFAULT_EASES] ?? {}),
+    }
   }
   return merged
 }
